@@ -1,0 +1,11 @@
+.build/
+.DS_Store
+dist/*.app
+dist/AppIcon.iconset
+dist/trackai-universal
+/trackai
+*.xcodeproj
+
+# The installer's raw-download fallback fetches this from the repo, so it is
+# committed on purpose — a global ignore of *.zip must not swallow it.
+!dist/TrackAI.zip

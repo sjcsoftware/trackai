@@ -1,0 +1,105 @@
+#!/bin/bash
+# trackai CLI — controls the trackai menu bar app (macOS only).
+set -u
+
+REPO="sjcsoftware/trackai"
+INSTALL_URL="https://raw.githubusercontent.com/$REPO/main/install.sh"
+
+die() { echo "$*" >&2; exit 1; }
+
+[ "$(uname -s)" = "Darwin" ] || die "trackai supports macOS only."
+
+APP="/Applications/TrackAI.app"
+BIN="$APP/Contents/MacOS/trackai"
+
+# A checkout's ./trackai binary wins, so developers can drive their own build.
+if [ -n "${TRACKAI_BIN:-}" ] && [ -x "${TRACKAI_BIN}" ]; then
+    BIN="$TRACKAI_BIN"
+    APP=""
+fi
+
+need_app() { [ -x "$BIN" ] || die "TrackAI.app is not installed. Re-run the installer."; }
+run_app()  { "$BIN" "$@"; }
+app_pid()  { pgrep -f "$BIN" 2>/dev/null | head -1 | grep . ; }
+start_app() { if [ -n "$APP" ]; then open -a "$APP"; else "$BIN" >/dev/null 2>&1 & fi; }
+stop_app() { osascript -e 'quit app "TrackAI"' >/dev/null 2>&1 || pkill -f "$BIN" 2>/dev/null || true; }
+
+case "${1:-help}" in
+  setup)
+    need_app
+    run_app --setup || exit 1
+    app_pid >/dev/null 2>&1 || start_app || exit 0
+    echo ""
+    echo "Look for the dial icon in your menu bar — click it for per-provider usage."
+    echo "Tip: enable \"Launch at login\" in its settings (gear icon, bottom right)."
+    ;;
+  stats)
+    need_app
+    run_app --stats
+    ;;
+  start)
+    need_app
+    if app_pid >/dev/null 2>&1; then
+        echo "trackai is already running."
+    else
+        start_app && echo "trackai started."
+    fi
+    ;;
+  stop)
+    stop_app
+    echo "trackai stopped."
+    ;;
+  restart)
+    need_app
+    stop_app
+    sleep 1
+    start_app && echo "trackai restarted."
+    ;;
+  status)
+    if pid="$(app_pid)"; then
+        echo "trackai is running (pid $pid)."
+    else
+        echo "trackai is not running."
+    fi
+    ;;
+  logs)
+    echo "trackai writes to the unified system log rather than a file:"
+    echo "  log show --predicate 'process == \"trackai\"' --info --last 1h"
+    ;;
+  update)
+    echo "Updating trackai to the latest version..."
+    # exec a fresh shell so nothing reads this script file after the installer
+    # replaces it mid-update.
+    exec /bin/bash -c "
+      set -e
+      curl -fsSL '$INSTALL_URL' | bash
+      trackai restart >/dev/null 2>&1 || true
+      echo ''
+      echo 'trackai updated and restarted.'
+    "
+    ;;
+  uninstall)
+    stop_app
+    sleep 1
+    [ -n "$APP" ] && rm -rf "$APP" && echo "Removed $APP"
+    SELF="$(command -v trackai || true)"
+    [ -n "$SELF" ] && rm -f "$SELF" && echo "Removed $SELF"
+    echo "trackai uninstalled. Settings kept in ~/Library/Preferences — delete com.chaseungjoon.trackai.plist to clear them."
+    ;;
+  help|--help|-h|*)
+    cat <<USAGE
+trackai — Claude Code and Codex usage in your Mac menu bar
+
+Usage:
+  trackai setup       Connect to your existing CLI logins and start the app
+  trackai start       Start the app
+  trackai stop        Quit the app
+  trackai restart     Restart the app
+  trackai status      Report whether the app is running
+  trackai update      Update to the latest version and restart
+  trackai stats       Print all usage stats as JSON
+  trackai logs        How to read the app's log output
+  trackai uninstall   Remove the app and this CLI
+USAGE
+    ;;
+esac
