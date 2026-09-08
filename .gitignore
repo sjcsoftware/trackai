@@ -9,3 +9,10 @@ dist/trackai-universal
 # The installer's raw-download fallback fetches this from the repo, so it is
 # committed on purpose — a global ignore of *.zip must not swallow it.
 !dist/TrackAI.zip
+
+# Linux build/test output
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+!dist/trackai-linux.tar.gz

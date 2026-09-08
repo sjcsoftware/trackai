@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-[ "$(uname -s)" = "Darwin" ] || { echo "trackai is macOS only." >&2; exit 1; }
+[ "$(uname -s)" = "Darwin" ] || { echo "The Mac app build requires macOS. On Linux run ./linux/scripts/build.sh." >&2; exit 1; }
 
 VERSION="${1:-0.1.0}"
 APP_NAME="TrackAI"

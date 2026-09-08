@@ -1,0 +1,118 @@
+#!/bin/bash
+# Linux CLI. macOS keeps its signed bundle's existing bin/trackai wrapper.
+set -euo pipefail
+REPO="sjcsoftware/trackai"
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/trackai"
+PID_FILE="$CACHE_DIR/trackai.pid"
+LOG_FILE="$CACHE_DIR/trackai.log"
+PYTHON="${TRACKAI_PYTHON:-/usr/bin/python3}"
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+APP_DIR="${TRACKAI_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/trackai}"
+# A source checkout is runnable without installing anything.
+if [ -z "${TRACKAI_HOME:-}" ] && [ -d "$(dirname "$SELF")/../src/trackai" ]; then
+    APP_DIR="$(cd "$(dirname "$SELF")/../src" && pwd)"
+fi
+export TRACKAI_CLI="$SELF"
+die() { echo "$*" >&2; exit 1; }
+need_app() {
+    [ -f "$APP_DIR/trackai/__main__.py" ] || die "trackai is not installed. Re-run install.sh."
+    [ -x "$PYTHON" ] || command -v "$PYTHON" >/dev/null || die "Install python3 first."
+}
+run_app() { PYTHONPATH="$APP_DIR${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON" -m trackai "$@"; }
+app_pid() {
+    [ -f "$PID_FILE" ] || return 1
+    local pid
+    read -r pid < "$PID_FILE" || [ -n "${pid:-}" ] || return 1
+    [[ "$pid" =~ ^[1-9][0-9]*$ ]] || return 1
+    kill -0 "$pid" 2>/dev/null || return 1
+    # Never signal a reused PID belonging to another program.
+    [ -r "/proc/$pid/cmdline" ] || return 1
+    "$PYTHON" -c 'import pathlib,sys; a=pathlib.Path("/proc",sys.argv[1],"cmdline").read_bytes().split(b"\0"); sys.exit(0 if any(a[i:i+2]==[b"-m",b"trackai"] for i in range(len(a)-1)) else 1)' "$pid" 2>/dev/null || return 1
+    echo "$pid"
+}
+start_app() {
+    if app_pid >/dev/null; then echo "trackai is already running."; return; fi
+    [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] || { echo 'No display detected. Use `trackai stats` over SSH.' >&2; return 1; }
+    mkdir -p "$CACHE_DIR"
+    local detach=nohup
+    command -v setsid >/dev/null && detach=setsid
+    PYTHONPATH="$APP_DIR${PYTHONPATH:+:$PYTHONPATH}" \
+        "$detach" "$PYTHON" -m trackai >>"$LOG_FILE" 2>&1 </dev/null &
+    disown 2>/dev/null || true
+    for _ in {1..20}; do
+        if app_pid >/dev/null; then echo "trackai started."; return 0; fi
+        sleep 0.2
+    done
+    echo "trackai failed to start. See $LOG_FILE" >&2
+    return 1
+}
+stop_app() {
+    local pid
+    if pid="$(app_pid)"; then
+        kill "$pid" 2>/dev/null || true
+        for _ in {1..20}; do
+            if ! app_pid >/dev/null; then return 0; fi
+            sleep 0.2
+        done
+        echo "trackai has not stopped yet (pid $pid)." >&2
+        return 1
+    fi
+}
+case "${1:-help}" in
+    setup)
+        need_app; shift; run_app --setup "$@"
+        if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then start_app; fi
+        ;;
+    stats) need_app; shift; run_app --stats "$@" ;;
+    start) need_app; start_app ;;
+    stop) stop_app; echo "trackai stopped." ;;
+    restart) need_app; stop_app; start_app ;;
+    status)
+        if pid="$(app_pid)"; then echo "trackai is running (pid $pid)."
+        else echo "trackai is not running."; fi
+        ;;
+    logs) [ -f "$LOG_FILE" ] || die "No log file at $LOG_FILE"; tail -n "${2:-50}" "$LOG_FILE" ;;
+    update)
+        # Execute from memory before the installer replaces this script.
+        exec /bin/bash -c '
+            set -euo pipefail
+            tmp=$(mktemp)
+            trap '\''rm -f "$tmp"'\'' EXIT
+            ref=${TRACKAI_REF:-main}
+            curl -fsSL "https://raw.githubusercontent.com/sjcsoftware/trackai/$ref/install.sh" -o "$tmp"
+            bash "$tmp"
+            "$1" restart
+            echo "trackai updated and restarted."
+        ' trackai-update "$SELF"
+        ;;
+    uninstall)
+        stop_app
+        installed="${XDG_DATA_HOME:-$HOME/.local/share}/trackai"
+        [ "$APP_DIR" = "$installed" ] || die "Refusing to uninstall a development checkout."
+        rm -rf -- "$installed"
+        rm -f -- "${XDG_DATA_HOME:-$HOME/.local/share}/applications/trackai.desktop" \
+            "${XDG_CONFIG_HOME:-$HOME/.config}/autostart/trackai.desktop"
+        for size in 16 32 48 64 128 256 512; do
+            rm -f -- "${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/${size}x${size}/apps/trackai.png"
+        done
+        rm -rf -- "$CACHE_DIR"
+        rm -f -- "$SELF"
+        echo "trackai uninstalled. Settings kept in ${XDG_CONFIG_HOME:-$HOME/.config}/trackai."
+        ;;
+    help|--help|-h)
+        cat <<'USAGE'
+trackai — Claude Code and Codex usage in your Linux system tray
+
+  trackai setup           Check existing CLI logins and start the app
+  trackai start           Start the app
+  trackai stop            Quit the app
+  trackai restart         Restart the app
+  trackai status          Report whether the app is running
+  trackai update          Update for this platform and restart
+  trackai stats [--offline]  Print usage as JSON (no display required)
+  trackai logs [n]        Show recent app logs
+  trackai uninstall      Remove the app and CLI; keep preferences
+USAGE
+        ;;
+    *) die "Unknown command: $1. Run trackai help." ;;
+esac

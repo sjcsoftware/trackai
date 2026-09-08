@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trackai"
+dynamic = ["version"]
+description = "Claude Code and Codex usage monitor for the Linux system tray"
+readme = {text = "Claude Code and Codex usage monitor for the Linux system tray.", content-type = "text/plain"}
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "Cha Seungjoon" }]
+keywords = ["claude", "usage", "monitor", "tray", "gtk"]
+classifiers = [
+    "Environment :: X11 Applications :: GTK",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Topic :: Utilities",
+]
+# The GUI needs PyGObject and pycairo, which come from distribution packages
+# (python3-gi, python3-gi-cairo, python3-cairo) rather than PyPI wheels —
+# install.sh apt-installs them. The core has no third-party dependencies.
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/sjcsoftware/trackai"
+"macOS version" = "https://github.com/sjcsoftware/trackai"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+packages = ["trackai"]
+
+[tool.setuptools.dynamic]
+version = { attr = "trackai.__version__" }
+
+[tool.pyright]
+extraPaths = ["src"]
+pythonVersion = "3.8"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

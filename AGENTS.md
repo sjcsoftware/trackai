@@ -1,10 +1,11 @@
 # trackai
 
-Claude Code + Codex usage monitor for the macOS menu bar. Native Swift/SwiftUI,
-macOS 13+, universal binary, MIT, © 2026 Cha Seungjoon.
+Claude Code + Codex usage monitor for the macOS menu bar and Linux system tray.
+Swift/SwiftUI on macOS 13+ (universal); Python/GTK 3 on Linux (Ubuntu 22.04+).
+MIT, © 2026 Cha Seungjoon.
 
 Baseline this grew out of: `sjcsoftware/trackclaude` (single-provider, macOS + Linux).
-trackai is macOS only and multi-provider.
+trackai supports both platforms and multiple providers.
 
 ## Layout
 
@@ -26,11 +27,17 @@ Sources/trackai/
   Claude/                     credentials, usage API, transcript scanner, pricing
   Codex/                      credentials (JWT claims), session scanner, pricing
   Views/                      Components, ProviderBoxes, PanelView, SettingsView
-bin/trackai                   user-facing CLI (setup/start/stop/stats/update/uninstall)
+linux/src/trackai/           GTK app, provider registry, scanners, settings
+linux/bin/trackai             Linux CLI (separate from signed Mac bundle)
+linux/scripts/build.sh        tests + reproducible Linux source archive
+linux/scripts/smoke-ui.py     GTK checks and screenshots using synthetic data
+linux/tests/                 headless accounting/cache/installer tests
+bin/trackai                   macOS CLI (setup/start/stop/stats/update/uninstall)
 install.sh                    curl | bash installer; also works from a checkout
 scripts/build.sh              universal build → dist/TrackAI.app + .zip + ./trackai
 scripts/gen-icon.swift        renders the .iconset
-dist/TrackAI.zip              the payload install.sh downloads
+dist/TrackAI.zip              macOS payload
+dist/trackai-linux.tar.gz     Linux payload; installer selects by uname
 ```
 
 ## Invariants
@@ -40,7 +47,9 @@ dist/TrackAI.zip              the payload install.sh downloads
    user copy a credential, it is the wrong change.
 2. **The app bundle embeds `bin/trackai` as `Contents/Resources/trackai-cli`,**
    and the installer takes the CLI from there when not running from a checkout.
-   Any edit to `bin/trackai` therefore requires rebuilding `dist/TrackAI.zip`.
+   Any edit to `bin/trackai` therefore requires rebuilding `dist/TrackAI.zip`
+   on macOS. The Linux launcher is `linux/bin/trackai`; rebuild its source
+   archive with `linux/scripts/build.sh` after Linux or packaged-doc changes.
 3. **Codex makes no network call.** Its rate limits come from the `rate_limits`
    block in `~/.codex/sessions/**/*.jsonl`. If that snapshot is stale the UI says
    so; it must never be silently presented as live.
@@ -48,7 +57,8 @@ dist/TrackAI.zip              the payload install.sh downloads
    floor, the 1-minute manual-refresh floor, the persisted cache and the
    exponential 429 back-off in `ClaudeProvider`.
 5. **Provider scans run off-main.** Read `Settings.shared` through `onMain {}`
-   from a provider, never directly.
+   from a provider, never directly. Linux captures `Settings.snapshot()` on the
+   GTK thread, scans on a worker, and publishes via `GLib.idle_add`.
 6. **Adding a provider** should only mean: a `UsageProvider` conformance, a
    `ProviderKind` case, a `ProviderMark` glyph, and a `ProviderRegistry` entry.
    Nothing in the views or settings should need a per-provider branch beyond
@@ -95,3 +105,16 @@ only if Google exposes a quota endpoint that a consumer token can actually call.
   settings window.
 - Universal binary builds for arm64 + x86_64; the app bundle launches and holds
   a status item.
+
+## Linux verification
+
+- Run `python3 -m unittest discover -s linux/tests -v` (standard library only).
+- Run `/usr/bin/python3 linux/scripts/smoke-ui.py /tmp/trackai-preview` with a
+  display, or prefix with `xvfb-run -a` in CI. It uses synthetic data only.
+- `linux/scripts/build.sh` runs tests and regenerates the committed payload.
+- The installer must select the OS automatically through the same `main` URL.
+  `TRACKAI_REF` is an optional developer override; never mix it with latest-release
+  fallback downloads from another ref.
+- Ubuntu 24.04 local Claude/Codex accounting and GTK windows have been verified.
+  Linux never changes CLI credentials. Its Claude cache uses a cross-process
+  lock and persists freshness/back-off, including requests from `stats`.

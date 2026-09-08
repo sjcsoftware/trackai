@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=trackai
+GenericName=Claude Code and Codex usage monitor
+Comment=Track Claude Code plan limits and token usage from the system tray
+Exec=@EXEC@
+Icon=trackai
+Terminal=false
+Categories=Utility;Monitor;System;
+Keywords=claude;usage;tokens;monitor;ai;
+StartupNotify=false
+X-GNOME-UsesNotifications=false
