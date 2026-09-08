@@ -59,7 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            button.image = StatusIcon.gauge(percent: nil, color: .systemGray)
+            button.image = StatusIcon.bolt(percent: nil, color: .systemGray)
             button.imagePosition = .imageLeft
             button.action = #selector(togglePanel)
             button.target = self

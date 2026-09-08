@@ -121,16 +121,8 @@ struct SettingsView: View {
 
     private var thresholdSection: some View {
         Section {
-            HStack {
-                Text("Orange above")
-                Slider(value: $settings.warnThreshold, in: 10...90, step: 5)
-                Text("\(Int(settings.warnThreshold))%").monospacedDigit().frame(width: 40)
-            }
-            HStack {
-                Text("Red above")
-                Slider(value: $settings.critThreshold, in: 20...99, step: 1)
-                Text("\(Int(settings.critThreshold))%").monospacedDigit().frame(width: 40)
-            }
+            thresholdSlider("Orange above", value: warnBinding)
+            thresholdSlider("Red above", value: critBinding)
             HStack(spacing: 0) {
                 ForEach(0..<50) { i in
                     Rectangle()
@@ -142,9 +134,34 @@ struct SettingsView: View {
         } header: {
             Text("Colour thresholds")
         } footer: {
-            Text("Red is clamped above orange automatically if the sliders cross.")
+            Text("Red cannot be dragged below orange — it stops there.")
                 .font(.system(size: 10)).foregroundStyle(.secondary)
         }
+    }
+
+    /// Both sliders share a range and step so they render identically, and the
+    /// labels share a width so the two tracks line up.
+    private func thresholdSlider(_ label: String, value: Binding<Double>) -> some View {
+        HStack {
+            Text(label).frame(width: 92, alignment: .leading)
+            Slider(value: value, in: Self.thresholdRange, step: Self.thresholdStep)
+            Text("\(Int(value.wrappedValue))%").monospacedDigit().frame(width: 40, alignment: .trailing)
+        }
+    }
+
+    private static let thresholdRange: ClosedRange<Double> = 10...95
+    private static let thresholdStep: Double = 5
+
+    // Dragging either handle past the other stops at it, so red is never below
+    // orange and the three colour bands stay in order.
+    private var warnBinding: Binding<Double> {
+        Binding(get: { settings.warnThreshold },
+                set: { settings.warnThreshold = min($0, settings.critThreshold) })
+    }
+
+    private var critBinding: Binding<Double> {
+        Binding(get: { settings.critThreshold },
+                set: { settings.critThreshold = max($0, settings.warnThreshold) })
     }
 
     // MARK: 4. Appearance

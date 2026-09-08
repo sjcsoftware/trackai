@@ -119,7 +119,7 @@ final class Settings: ObservableObject {
         showPercentInMenuBar = d.object(forKey: "showPercentInMenuBar") as? Bool ?? true
 
         warnThreshold = d.object(forKey: "warnThreshold") as? Double ?? 50
-        critThreshold = d.object(forKey: "critThreshold") as? Double ?? 70
+        critThreshold = d.object(forKey: "critThreshold") as? Double ?? 80
 
         transparency = d.object(forKey: "transparency") as? Double ?? 0.65
         opaqueBackground = d.bool(forKey: "opaqueBackground")

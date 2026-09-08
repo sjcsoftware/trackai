@@ -30,7 +30,7 @@ case "${1:-help}" in
     run_app --setup || exit 1
     app_pid >/dev/null 2>&1 || start_app || exit 0
     echo ""
-    echo "Look for the dial icon in your menu bar — click it for per-provider usage."
+    echo "Look for the bolt icon in your menu bar — click it for per-provider usage."
     echo "Tip: enable \"Launch at login\" in its settings (gear icon, bottom right)."
     ;;
   stats)

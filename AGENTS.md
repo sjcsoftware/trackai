@@ -15,7 +15,7 @@ Sources/trackai/
   AppDelegate.swift           status item, borderless NSPanel, settings window
   AppState.swift              refresh loop, snapshots keyed by ProviderKind, menu bar maths
   Settings.swift              UserDefaults-backed prefs + onMain() helper
-  StatusIcon.swift            menu bar dial / provider glyph
+  StatusIcon.swift            menu bar bolt meter / provider glyph
   ProviderMark.swift          vector logos (no image assets in the repo)
   Formatting.swift            token/USD/relative-time strings, ISO date parsing
   Providers/

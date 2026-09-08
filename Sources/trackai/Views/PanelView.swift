@@ -26,7 +26,7 @@ struct PanelView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            Image(nsImage: StatusIcon.gauge(percent: state.menuBarPercent, color: headerColor, size: 16))
+            Image(nsImage: StatusIcon.bolt(percent: state.menuBarPercent, color: headerColor, size: 16))
             Text("trackai").font(.system(size: 13, weight: .bold))
             if let percent = state.menuBarPercent {
                 Text(Formatting.percent(percent))

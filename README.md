@@ -1,6 +1,6 @@
 # trackai
 
-Claude Code and Codex usage in your Mac menu bar — one dial, one panel, per-provider boxes.
+Claude Code and Codex usage in your Mac menu bar — one bolt, one panel, per-provider boxes.
 
 <p align="center">
   <img src="screenshots/overview.png" width="330" alt="Overview page">
@@ -22,7 +22,7 @@ setup again.
 
 ## What it shows
 
-Click the menu bar dial and you get one rounded box per provider, its logo in
+Click the menu bar icon and you get one rounded box per provider, its logo in
 the top-left corner. Two pages, switched from the bar at the bottom:
 
 **Overview** — three bars per provider, in the order the windows tighten:
@@ -54,7 +54,12 @@ The gear at the bottom right:
 2. **Menu bar** — pick what the icon follows: the average of the ticked
    providers, whichever is highest, or a single provider; and whether that uses
    daily, weekly or session usage. Optionally show the percentage next to the icon.
-3. **Colour thresholds** — sliders for where the dial turns orange and red.
+   Averaging several providers draws a bolt that fills as usage climbs; picking a
+   single provider draws that provider's own mark. Either way it takes the
+   green/orange/red colour from your thresholds.
+3. **Colour thresholds** — two matched sliders for where the icon turns orange
+   and red (50% and 80% by default). Red stops when it reaches orange, so the
+   three bands always stay in order.
 4. **Providers** — enable or disable each one, and point trackai at extra
    `CLAUDE_CONFIG_DIR` paths or a non-default `CODEX_HOME`. One provider is
    enough; the app works with whatever you have.
