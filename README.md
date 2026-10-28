@@ -144,7 +144,7 @@ For development only, `TRACKAI_REF` can explicitly select a branch or tag. It is
 
 ## Adding a provider
 
-On macOS, implement `UsageProvider`, add a `ProviderKind` case and `ProviderMark` glyph, then register it in `ProviderRegistry.all`. On Linux, implement a provider returning `ProviderSnapshot` objects, add it to `PROVIDERS` in `linux/src/trackai/providers.py`, and include its key in the settings defaults. The panels and settings consume the registry; scans run in a background thread.
+On macOS, implement `UsageProvider`, add a `ProviderKind` case and `ProviderMark` glyph, then register it in `ProviderRegistry.all`. On Linux, implement a provider returning `ProviderSnapshot` objects, add it to `PROVIDERS` in `linux/src/trackai/providers.py`, add its outline to `linux/src/trackai/provider_mark.py`, and include its key in the settings defaults. The panels and settings consume the registry; scans run in a background thread.
 
 ## Licence
 

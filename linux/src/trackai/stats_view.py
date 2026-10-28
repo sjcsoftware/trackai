@@ -17,7 +17,7 @@ gi.require_version("Gtk", "3.0")
 
 from gi.repository import Gdk, Gtk, Pango   # noqa: E402
 
-from . import status_icon                    # noqa: E402
+from . import provider_mark, status_icon     # noqa: E402
 from .credentials import STATUS_EXPIRED, STATUS_MISSING, STATUS_OK   # noqa: E402
 from .pricing import pretty_model_name       # noqa: E402
 from .settings import COLOR_GRAY, Settings   # noqa: E402
@@ -31,6 +31,7 @@ except ImportError:
 PANEL_WIDTH = 360
 PANEL_MAX_SCROLL_HEIGHT = 460
 CORNER_RADIUS = 16
+MARK_SIZE = 14
 
 CSS = b"""
 #tc-panel { background-color: transparent; }
@@ -163,12 +164,34 @@ def _rounded_rect(cr, x, y, width, height, radius):
 class SectionBlock(Gtk.Box):
     """A softly rounded frosted box grouping one section of stats."""
 
-    def __init__(self, title):
+    def __init__(self, title, kind=None):
         Gtk.Box.__init__(self, orientation=Gtk.Orientation.VERTICAL, spacing=9)
         ctx = self.get_style_context()
         ctx.add_class("tc-block")
         ctx.add_class("tc-block-dark" if prefers_dark() else "tc-block-light")
-        self.pack_start(_label(title.upper(), "tc-section-title"), False, False, 0)
+        title_label = _label(title.upper(), "tc-section-title")
+        if kind is None:
+            self.pack_start(title_label, False, False, 0)
+            return
+        # Provider blocks carry the provider's mark beside the title.
+        head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        mark = Gtk.DrawingArea()
+        mark.set_size_request(MARK_SIZE, MARK_SIZE)
+        mark.set_valign(Gtk.Align.CENTER)
+        mark.connect("draw", self._draw_mark, kind)
+        head.pack_start(mark, False, False, 0)
+        title_label.set_valign(Gtk.Align.CENTER)
+        head.pack_start(title_label, True, True, 0)
+        self.pack_start(head, False, False, 0)
+
+    @staticmethod
+    def _draw_mark(widget, cr, kind):
+        if cairo is None:
+            return False
+        fg = widget.get_style_context().get_color(widget.get_state_flags())
+        provider_mark.draw_mark(cr, kind, MARK_SIZE,
+                                provider_mark.brand_color(kind, (fg.red, fg.green, fg.blue)))
+        return False
 
     def add_row(self, widget):
         self.pack_start(widget, False, False, 0)
@@ -314,7 +337,7 @@ class StatsPanel(Gtk.Window):
         if not self.state.accounts:
             body.pack_start(_label("No providers found. Run `claude` and/or `codex`, log in, then refresh.", "tc-note"), False, False, 0)
         for data in self.state.accounts:
-            block = SectionBlock(data.name)
+            block = SectionBlock(data.name, data.kind)
             if data.account.email:
                 block.add_row(_label(data.account.email, "tc-sub"))
             if self.detailed:

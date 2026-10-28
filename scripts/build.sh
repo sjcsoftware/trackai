@@ -7,20 +7,24 @@ cd "$ROOT"
 
 [ "$(uname -s)" = "Darwin" ] || { echo "The Mac app build requires macOS. On Linux run ./linux/scripts/build.sh." >&2; exit 1; }
 
-VERSION="${1:-0.1.0}"
+VERSION="${1:-0.2.0}"
 APP_NAME="TrackAI"
 BUNDLE_ID="com.chaseungjoon.trackai"
 DIST="$ROOT/dist"
 APP="$DIST/$APP_NAME.app"
 
 echo "==> Building release binaries (arm64 + x86_64)..."
-swift build -c release --triple arm64-apple-macosx13.0
-swift build -c release --triple x86_64-apple-macosx13.0
 mkdir -p "$DIST"
+# Newer SwiftPM puts every triple in the same bin dir, so copy each slice out
+# before building the next one.
+for arch in arm64 x86_64; do
+    triple="$arch-apple-macosx13.0"
+    swift build -c release --triple "$triple"
+    cp "$(swift build -c release --triple "$triple" --show-bin-path)/trackai" "$DIST/trackai-$arch"
+done
 BIN="$DIST/trackai-universal"
-lipo -create -output "$BIN" \
-    .build/arm64-apple-macosx/release/trackai \
-    .build/x86_64-apple-macosx/release/trackai
+lipo -create -output "$BIN" "$DIST/trackai-arm64" "$DIST/trackai-x86_64"
+rm -f "$DIST/trackai-arm64" "$DIST/trackai-x86_64"
 [ -x "$BIN" ] || { echo "build failed: $BIN missing" >&2; exit 1; }
 
 echo "==> Assembling ${APP}..."

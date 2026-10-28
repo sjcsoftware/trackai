@@ -17,7 +17,7 @@ Sources/trackai/
   AppState.swift              refresh loop, snapshots keyed by ProviderKind, menu bar maths
   Settings.swift              UserDefaults-backed prefs + onMain() helper
   StatusIcon.swift            menu bar bolt meter / provider glyph
-  ProviderMark.swift          vector logos (no image assets in the repo)
+  ProviderMark.swift          official provider marks as SVG outlines (no image assets)
   Formatting.swift            token/USD/relative-time strings, ISO date parsing
   Providers/
     Provider.swift            UsageEntry, TokenTotals, LocalStats, LimitInfo,
@@ -28,6 +28,7 @@ Sources/trackai/
   Codex/                      credentials (JWT claims), session scanner, pricing
   Views/                      Components, ProviderBoxes, PanelView, SettingsView
 linux/src/trackai/           GTK app, provider registry, scanners, settings
+linux/src/trackai/provider_mark.py  same outlines drawn with cairo
 linux/bin/trackai             Linux CLI (separate from signed Mac bundle)
 linux/scripts/build.sh        tests + reproducible Linux source archive
 linux/scripts/smoke-ui.py     GTK checks and screenshots using synthetic data
@@ -105,6 +106,11 @@ only if Google exposes a quota endpoint that a consumer token can actually call.
   settings window.
 - Universal binary builds for arm64 + x86_64; the app bundle launches and holds
   a status item.
+- Provider marks are the official Claude and Codex SVGs, normalised to absolute
+  M/L/C/Z commands on a 24x24 viewBox. Keep the Swift and Python copies identical.
+- Command Line Tools whose default SDK is macOS 27 lack the SwiftUI `@State`
+  macro plugin, so the build fails. Build against the 26.x SDK:
+  `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk ./scripts/build.sh <version>`.
 
 ## Linux verification
 
