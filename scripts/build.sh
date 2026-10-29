@@ -7,7 +7,7 @@ cd "$ROOT"
 
 [ "$(uname -s)" = "Darwin" ] || { echo "The Mac app build requires macOS. On Linux run ./linux/scripts/build.sh." >&2; exit 1; }
 
-VERSION="${1:-0.2.0}"
+VERSION="${1:-0.2.1}"
 APP_NAME="TrackAI"
 BUNDLE_ID="com.chaseungjoon.trackai"
 DIST="$ROOT/dist"

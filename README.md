@@ -69,6 +69,7 @@ Use the gear in the panel or **Settings…** in the Linux tray menu:
 - Choose daily, session, or weekly usage for the icon; combine selected providers by average or highest usage, or select one account/provider.
 - Show the percentage next to the icon; adjust the orange/red thresholds (50% / 80% by default).
 - Adjust transparency, select an opaque background, set the refresh interval, and enable launch at login.
+- macOS: "Skip the Keychain password prompt" (on by default) reads Claude Code's login through Apple's `security` tool, which Claude Code itself saves it with. Turned off, trackai reads the Keychain directly and macOS asks for your login password again after every update.
 
 On macOS, drag provider logos to reorder them; Linux uses up/down buttons. The Mac menu bar can show a provider glyph or a filling bolt; Linux uses a colored bolt. macOS has native background blur; Linux uses a translucent window. GNOME's tray protocol opens a menu before the custom panel.
 
@@ -76,7 +77,7 @@ On macOS, drag provider logos to reorder them; Linux uses up/down buttons. The M
 
 | | Claude Code | Codex |
 |---|---|---|
-| Login | `~/.claude/.credentials.json`, with read-only Keychain fallback on macOS or `secret-tool` on Linux | `~/.codex/auth.json`; JWT claims carry the account and plan |
+| Login | `~/.claude/.credentials.json`, with read-only Keychain fallback on macOS (through Apple's `security` tool, so no password prompt) or `secret-tool` on Linux | `~/.codex/auth.json`; JWT claims carry the account and plan |
 | Tokens | `~/.claude/projects/**/*.jsonl` assistant records | `~/.codex/sessions/**/*.jsonl`; new `token_usage_record` entries or older `token_count` deltas |
 | Plan limits | Anthropic's OAuth usage endpoint | `rate_limits` snapshots in the CLI's rollout logs |
 

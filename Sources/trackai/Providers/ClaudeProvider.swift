@@ -37,7 +37,8 @@ final class ClaudeProvider: UsageProvider {
 
         let info = ClaudeAuth.accountInfo(configDir: primary)
         snap.accountLabel = info.email
-        if let creds = ClaudeAuth.load(configDir: primary, isDefault: true) {
+        let skipPrompt = onMain { Settings.shared.claudeSkipKeychainPrompt }
+        if let creds = ClaudeAuth.load(configDir: primary, isDefault: true, skipKeychainPrompt: skipPrompt) {
             snap.status = creds.isExpired ? .expired : .ok
             snap.planName = creds.subscriptionType
             // "default_claude_ai" is noise; only surface a distinctive tier.

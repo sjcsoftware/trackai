@@ -96,6 +96,11 @@ final class Settings: ObservableObject {
         didSet { d.set(claudeExtraConfigDirs, forKey: "claudeExtraConfigDirs") }
     }
     @Published var codexHome: String { didSet { d.set(codexHome, forKey: "codexHome") } }
+    /// Read Claude Code's Keychain item through `/usr/bin/security` instead of
+    /// the Security API, so an ad-hoc-signed update never re-prompts.
+    @Published var claudeSkipKeychainPrompt: Bool {
+        didSet { d.set(claudeSkipKeychainPrompt, forKey: "claudeSkipKeychainPrompt") }
+    }
 
     private init() {
         let storedOrder = (d.stringArray(forKey: "providerOrder") ?? []).compactMap(ProviderKind.init(rawValue:))
@@ -129,6 +134,7 @@ final class Settings: ObservableObject {
 
         claudeExtraConfigDirs = d.stringArray(forKey: "claudeExtraConfigDirs") ?? []
         codexHome = d.string(forKey: "codexHome") ?? ""
+        claudeSkipKeychainPrompt = d.object(forKey: "claudeSkipKeychainPrompt") as? Bool ?? true
     }
 
     /// The providers whose boxes are shown, in the user's order.

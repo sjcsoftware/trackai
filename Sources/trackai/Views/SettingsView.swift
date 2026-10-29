@@ -200,7 +200,7 @@ struct SettingsView: View {
                     Text(statusLine(kind))
                         .font(.system(size: 10)).foregroundStyle(.secondary)
                         .padding(.leading, 2)
-                    if kind == .claude { claudeDirsEditor }
+                    if kind == .claude { claudeOptions }
                     if kind == .codex { codexHomeEditor }
                 }
                 .padding(.vertical, 2)
@@ -222,8 +222,15 @@ struct SettingsView: View {
     }
 
     @ViewBuilder
-    private var claudeDirsEditor: some View {
+    private var claudeOptions: some View {
         VStack(alignment: .leading, spacing: 4) {
+            Toggle("Skip the Keychain password prompt", isOn: $settings.claudeSkipKeychainPrompt)
+                .font(.system(size: 11))
+                .onChange(of: settings.claudeSkipKeychainPrompt) { _ in state.refresh() }
+            Text("Reads Claude Code's login through Apple's security tool. Claude Code saves the login with that tool, so macOS already trusts it and never asks for your password, even after a trackai update.")
+                .font(.system(size: 9.5)).foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.bottom, 4)
             ForEach(settings.claudeExtraConfigDirs, id: \.self) { dir in
                 HStack {
                     Text(dir).font(.system(size: 10, design: .monospaced)).lineLimit(1)

@@ -131,6 +131,7 @@ if let idx = arguments.firstIndex(of: "--render"), idx + 1 < arguments.count {
     let state = AppState()
     state.page = page
     let wantsSettings = arguments.contains("--settings")
+    let wantsKeychainHint = arguments.contains("--keychain-hint")
     // Screenshots go into a public README, so never bake a real account into one.
     let redact = arguments.contains("--redact")
     state.refresh {
@@ -141,8 +142,8 @@ if let idx = arguments.firstIndex(of: "--render"), idx + 1 < arguments.count {
             }
         }
         let view = AnyView(
-            wantsSettings
-                ? AnyView(SettingsView(state: state))
+            wantsKeychainHint ? AnyView(KeychainHintView())
+                : wantsSettings ? AnyView(SettingsView(state: state))
                 : AnyView(PanelView(state: state, openSettings: {}))
         ).background(Color(nsColor: .windowBackgroundColor))
         let hosting = NSHostingView(rootView: view)

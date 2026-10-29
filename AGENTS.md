@@ -64,6 +64,15 @@ dist/trackai-linux.tar.gz     Linux payload; installer selects by uname
    `ProviderKind` case, a `ProviderMark` glyph, and a `ProviderRegistry` entry.
    Nothing in the views or settings should need a per-provider branch beyond
    copy. Keep it that way.
+7. **The Mac app is ad-hoc signed, so a direct Keychain read re-prompts after
+   every build.** Claude Code writes `Claude Code-credentials` with
+   `/usr/bin/security add-generic-password -U`, which keeps `security` on the
+   item's ACL and in its `apple-tool:` partition. "Skip the Keychain password
+   prompt" (`claudeSkipKeychainPrompt`, on by default) reads through that tool
+   and never shows a dialog. With it off, `ClaudeAuth` first probes with
+   `SecKeychainSetUserInteractionAllowed(false)` (the file keychain ignores
+   `kSecUseAuthenticationUI`) and floats `KeychainPromptHint` only while the
+   real dialog is up. Linux reads files or Secret Service and has no equivalent.
 
 ## Data formats relied on
 

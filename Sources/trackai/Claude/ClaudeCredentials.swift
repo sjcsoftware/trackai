@@ -57,9 +57,9 @@ enum ClaudeAuth {
     }
 
     /// Credentials file first, then the Keychain (default config dir only).
-    static func load(configDir: URL, isDefault: Bool) -> ClaudeCredentials? {
+    static func load(configDir: URL, isDefault: Bool, skipKeychainPrompt: Bool) -> ClaudeCredentials? {
         if let creds = readCredentialsFile(configDir: configDir) { return creds }
-        if isDefault { return readKeychain() }
+        if isDefault { return readKeychain(skipPrompt: skipKeychainPrompt) }
         return nil
     }
 
@@ -68,20 +68,44 @@ enum ClaudeAuth {
         return parse(data: data)
     }
 
-    static func readKeychain() -> ClaudeCredentials? {
+    /// Claude Code saves this item with `/usr/bin/security add-generic-password -U`,
+    /// so Apple's `security` tool stays on the item's access list and reads it
+    /// without a prompt. trackai itself is ad-hoc signed: each build has a new
+    /// code hash, so a direct read asks for the login password again after every
+    /// update, however often the user clicks "Always Allow".
+    static func readKeychain(skipPrompt: Bool) -> ClaudeCredentials? {
+        if skipPrompt { return readKeychainViaCLI() }
+        switch copyKeychainItem(interactive: false) {
+        case .found(let data): return parse(data: data)
+        case .missing: return nil
+        case .needsPrompt: break
+        }
+        KeychainPromptHint.show()
+        defer { KeychainPromptHint.hide() }
+        if case .found(let data) = copyKeychainItem(interactive: true) { return parse(data: data) }
+        // Fall back to the `security` CLI, which can succeed when the direct
+        // API is denied.
+        return readKeychainViaCLI()
+    }
+
+    private enum KeychainRead { case found(Data), missing, needsPrompt }
+
+    private static func copyKeychainItem(interactive: Bool) -> KeychainRead {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
+        // The file-based login keychain ignores kSecUseAuthenticationUI; this
+        // process-wide switch is the only way to ask without showing a dialog.
+        if !interactive { SecKeychainSetUserInteractionAllowed(false) }
         var result: AnyObject?
-        if SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess, let data = result as? Data {
-            return parse(data: data)
-        }
-        // Fall back to the `security` CLI, which can succeed when the direct
-        // API is denied but the user has already granted terminal access.
-        return readKeychainViaCLI()
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if !interactive { SecKeychainSetUserInteractionAllowed(true) }
+        if status == errSecSuccess, let data = result as? Data { return .found(data) }
+        if status == errSecItemNotFound || interactive { return .missing }
+        return .needsPrompt
     }
 
     private static func readKeychainViaCLI() -> ClaudeCredentials? {
