@@ -190,27 +190,27 @@ class TrayApp(object):
     # -- icon --------------------------------------------------------------
 
     def _update_icon(self):
-        data = self.state.menu_bar_account
         percent = self.state.icon_percent()
         state = self.settings.usage_color_name(percent) if percent is not None else "gray"
+        name = status_icon.icon_name(state, self.state.icon_kind())
         label = ""
         if self.settings.show_percent_in_menu_bar and percent is not None:
             label = "{:.0f}%".format(percent)
 
         if self.indicator is not None:
-            if state != self._icon_state:
-                self.indicator.set_icon_full(status_icon.icon_name(state), "trackai usage")
-                self._icon_state = state
+            if name != self._icon_state:
+                self.indicator.set_icon_full(name, "trackai usage")
+                self._icon_state = name
             try:
                 self.indicator.set_label(label, "100%")
             except Exception:
                 pass
         elif self.status_icon_fallback is not None:
-            if state != self._icon_state and self.icon_dir:
-                path = os.path.join(self.icon_dir, status_icon.icon_name(state) + ".png")
+            if name != self._icon_state and self.icon_dir:
+                path = os.path.join(self.icon_dir, name + ".png")
                 if os.path.exists(path):
                     self.status_icon_fallback.set_from_file(path)
-                self._icon_state = state
+                self._icon_state = name
             tooltip = "trackai"
             if percent is not None:
                 tooltip = "trackai — {:.0f}%".format(percent)

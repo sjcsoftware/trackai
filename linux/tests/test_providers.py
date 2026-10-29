@@ -228,12 +228,20 @@ class ProviderStateTests(unittest.TestCase):
             data.api = ApiUsage([LimitInfo("session", "session", percent, None)], None, NOW)
             state.accounts.append(data)
         self.assertEqual(state.icon_percent(), 50)
+        self.assertIsNone(state.icon_kind())
         settings._values["iconMode"] = "highest"
         self.assertEqual(state.icon_percent(), 80)
+        self.assertEqual(state.icon_kind(), "codex")
         settings._values["iconMode"] = "single"
         self.assertEqual(state.icon_percent(), 20)
+        self.assertEqual(state.icon_kind(), "claude")
+        settings._values["defaultAccountID"] = state.accounts[1].id
+        self.assertEqual(state.icon_kind(), "codex")
         settings._values["colorMetric"] = "daily"
         self.assertIsNone(state.icon_percent())
+        self.assertEqual(state.icon_kind(), "codex")
+        settings._values["iconMode"] = "highest"
+        self.assertIsNone(state.icon_kind())
 
     def test_provider_order_disable_and_failure_isolation(self):
         class Fake:

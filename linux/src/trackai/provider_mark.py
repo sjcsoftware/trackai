@@ -72,6 +72,7 @@ CODEX_OUTLINE = """
 """
 
 _OUTLINES = {"claude": CLAUDE_OUTLINE, "codex": CODEX_OUTLINE}
+KINDS = tuple(_OUTLINES)
 
 
 def brand_color(kind, foreground):

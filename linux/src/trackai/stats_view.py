@@ -415,10 +415,9 @@ class StatsPanel(Gtk.Window):
         return button
 
     def _draw_header_icon(self, widget, cr):
-        data = self.state.menu_bar_account
         percent = self.state.icon_percent()
         rgb = self.settings.usage_color(percent) if percent is not None else COLOR_GRAY
-        status_icon.draw_bolt(cr, 16, rgb)
+        status_icon.draw_icon(cr, 16, rgb, self.state.icon_kind())
         return False
 
     def _change_page(self, _button, detailed):

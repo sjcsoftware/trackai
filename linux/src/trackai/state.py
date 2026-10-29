@@ -34,16 +34,32 @@ class AppState:
         return next((d for d in self.accounts if d.id == self.settings.default_account_id),
                     self.selected_account)
 
-    def icon_percent(self):
-        mode = self.settings.icon_mode
-        data = self.accounts
-        if mode == "single":
+    def _icon_values(self):
+        """(account, percent) pairs the tray icon is computed from."""
+        if self.settings.icon_mode == "single":
             data = [self.menu_bar_account] if self.menu_bar_account else []
         else:
-            data = [d for d in data if d.kind in self.settings.icon_providers]
-        values = [d.metric_percent(self.settings.color_metric) for d in data]
-        values = [v for v in values if v is not None]
-        return (max(values) if mode == "highest" else sum(values) / len(values)) if values else None
+            data = [d for d in self.accounts if d.kind in self.settings.icon_providers]
+        pairs = [(d, d.metric_percent(self.settings.color_metric)) for d in data]
+        return [(d, v) for d, v in pairs if v is not None]
+
+    def icon_percent(self):
+        values = [v for _, v in self._icon_values()]
+        if not values:
+            return None
+        return max(values) if self.settings.icon_mode == "highest" else sum(values) / len(values)
+
+    def icon_kind(self):
+        """Provider whose mark the tray shows; None means the bolt (average)."""
+        mode = self.settings.icon_mode
+        if mode == "single":
+            account = self.menu_bar_account
+            return account.kind if account else None
+        if mode == "highest":
+            values = self._icon_values()
+            if values:
+                return max(values, key=lambda pair: pair[1])[0].kind
+        return None
 
     def select(self, account_id):
         self.selected_account_id = account_id

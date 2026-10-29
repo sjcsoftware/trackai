@@ -1,8 +1,10 @@
-"""The TrackAI bolt tray icon (port of StatusIcon.swift).
+"""The TrackAI tray icon (port of StatusIcon.swift).
 
-AppIndicator/StatusNotifierItem can only show an icon it can load from a
-theme directory, so each colour state is rendered once with cairo into
-``$XDG_CACHE_HOME/trackai/icons`` and referenced by name.
+The bolt stands for the average across providers; a single or highest
+reading shows that provider's mark instead. AppIndicator/StatusNotifierItem
+can only show an icon it can load from a theme directory, so each glyph and
+colour state is rendered once with cairo into ``$XDG_CACHE_HOME/trackai/icons``
+and referenced by name.
 """
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ from __future__ import annotations
 import math
 import os
 
+from . import provider_mark
 from .settings import COLOR_GRAY, COLOR_GREEN, COLOR_ORANGE, COLOR_RED, ICON_DIR, ensure_dir
 
 try:
@@ -46,13 +49,22 @@ def draw_bolt(ctx, size, rgb, **_kwargs):
     ctx.restore()
 
 
-def render_surface(size, rgb):
-    """Render a transparent square surface holding the bolt."""
+def draw_icon(ctx, size, rgb, kind=None):
+    """The bolt, or `kind`'s mark inset to the bolt's optical height."""
+    if kind is None:
+        draw_bolt(ctx, size, rgb)
+    else:
+        inset = size * 0.06
+        provider_mark.draw_mark(ctx, kind, size - inset * 2, rgb, inset, inset)
+
+
+def render_surface(size, rgb, kind=None):
+    """Render a transparent square surface holding the bolt or a provider mark."""
     if cairo is None:
         return None
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, size, size)
     ctx = cairo.Context(surface)
-    draw_bolt(ctx, size, rgb)
+    draw_icon(ctx, size, rgb, kind)
     surface.flush()
     return surface
 
@@ -83,28 +95,29 @@ def render_app_icon(size):
     return surface
 
 
-def icon_name(state):
-    # type: (str) -> str
-    return ICON_NAME_PREFIX + state
+def icon_name(state, kind=None):
+    # type: (str, "str | None") -> str
+    return ICON_NAME_PREFIX + (kind + "-" if kind else "") + state
 
 
 def ensure_tray_icons(size=TRAY_SIZE):
     # type: (int) -> "str | None"
-    """Render every colour state into the icon theme dir. Returns that dir."""
+    """Render every glyph and colour state into the icon theme dir. Returns that dir."""
     if cairo is None:
         return None
     ensure_dir(ICON_DIR)
-    for state, rgb in STATE_COLORS.items():
-        # Always re-render: it costs microseconds and keeps an upgraded build
-        # from showing the previous version's cached artwork.
-        path = os.path.join(ICON_DIR, icon_name(state) + ".png")
-        surface = render_surface(size, rgb)
-        if surface is None:
-            return None
-        try:
-            surface.write_to_png(path)
-        except (OSError, IOError):
-            return None
+    for kind in (None,) + provider_mark.KINDS:
+        for state, rgb in STATE_COLORS.items():
+            # Always re-render: it costs microseconds and keeps an upgraded build
+            # from showing the previous version's cached artwork.
+            path = os.path.join(ICON_DIR, icon_name(state, kind) + ".png")
+            surface = render_surface(size, rgb, kind)
+            if surface is None:
+                return None
+            try:
+                surface.write_to_png(path)
+            except (OSError, IOError):
+                return None
     return ICON_DIR
 
 
