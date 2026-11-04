@@ -31,7 +31,7 @@ state = AppState(settings)
 state.refresh = lambda *a, **kw: None
 now = datetime.now(timezone.utc)
 for kind, name, model, percent in (("claude", "Claude Code", "claude-sonnet-5", 32), ("codex", "Codex", "gpt-5.5", 68)):
-    data = ProviderSnapshot(kind, name, "/fixture/" + kind)
+    data = ProviderSnapshot(kind, name, "/fixture/" + kind, daily_usage=kind != "codex")
     data.account.email = "developer@example.invalid"
     data.subscription_type = "plus" if kind == "codex" else "pro"
     data.credential_status = "ok"

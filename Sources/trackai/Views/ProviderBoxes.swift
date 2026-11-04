@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Overview: the three headline numbers for one provider, in the order the
 /// windows actually tighten — the rolling session first, then today, then the week.
+/// Providers without a daily window (Codex) skip the middle row.
 struct OverviewBoxView: View {
     let snapshot: ProviderSnapshot
 
@@ -9,7 +10,9 @@ struct OverviewBoxView: View {
         ProviderBox(snapshot: snapshot) {
             if let local = snapshot.local, snapshot.status != .notInstalled {
                 sessionRow
-                dailyRow(local)
+                if snapshot.kind.tracksDailyUsage {
+                    dailyRow(local)
+                }
                 weeklyRow(local)
             } else {
                 Text(emptyMessage)
@@ -166,7 +169,7 @@ struct DetailBoxView: View {
     private var localSection: some View {
         sectionTitle("Token usage (local)")
         if let local = snapshot.local {
-            if local.hasDailyBaseline {
+            if snapshot.kind.tracksDailyUsage, local.hasDailyBaseline {
                 BarRow(name: "Today",
                        percent: local.dailyRelativePercent,
                        valueText: "\(Formatting.tokens(local.today.total)) · \(costPrefix)\(Formatting.usd(local.today.cost))",

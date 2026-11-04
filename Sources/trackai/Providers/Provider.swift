@@ -170,7 +170,7 @@ struct ProviderSnapshot {
     /// Nil until there is enough history for that comparison to mean anything,
     /// so a first-day provider cannot drag a menu bar average to 100%.
     var dailyPercent: Double? {
-        guard let local, local.hasDailyBaseline else { return nil }
+        guard kind.tracksDailyUsage, let local, local.hasDailyBaseline else { return nil }
         return local.dailyRelativePercent
     }
 
@@ -219,6 +219,15 @@ enum ProviderKind: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .claude: return "Claude Code"
         case .codex: return "Codex"
+        }
+    }
+
+    /// Whether a "Daily" usage row makes sense. Codex plans have only 5h and
+    /// weekly windows, so a daily bar there would suggest a limit that does not exist.
+    var tracksDailyUsage: Bool {
+        switch self {
+        case .claude: return true
+        case .codex: return false
         }
     }
 

@@ -348,6 +348,8 @@ class StatsPanel(Gtk.Window):
                 block.add_row(self._footer(data))
             else:
                 for metric, title in (("session", "Session"), ("daily", "Daily"), ("weekly", "Weekly")):
+                    if metric == "daily" and not data.daily_usage:
+                        continue
                     percent = data.metric_percent(metric)
                     limit = data.api.limit(metric) if data.api else None
                     if limit:
@@ -466,13 +468,16 @@ class StatsPanel(Gtk.Window):
             block.add_row(_label("No transcripts found yet.", "tc-note"))
             return block
 
-        block.add_row(BarRow(
-            "Today",
-            local.daily_relative_percent if local.has_daily_baseline else 0,
-            "{} · {}".format(Formatting.tokens(local.today.total), Formatting.usd(local.today.cost)),
-            ("vs. busiest day in last 30 days" if local.has_daily_baseline else "Collecting daily history"),
-            self.settings,
-        ))
+        if data.daily_usage:
+            block.add_row(BarRow(
+                "Today",
+                local.daily_relative_percent if local.has_daily_baseline else 0,
+                "{} · {}".format(Formatting.tokens(local.today.total), Formatting.usd(local.today.cost)),
+                ("vs. busiest day in last 30 days" if local.has_daily_baseline else "Collecting daily history"),
+                self.settings,
+            ))
+        else:
+            block.add_row(self._stat_line("Today", local.today))
         for name, totals in (
             ("Last 5 hours", local.last5h),
             ("Last 7 days", local.last7d),

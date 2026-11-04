@@ -349,6 +349,11 @@ class StateTests(unittest.TestCase):
         self.assertIsNone(empty.metric_percent("session"))
         self.assertIsNone(empty.metric_percent("daily"))
 
+        # Codex has no daily window, so it never reports a daily percentage.
+        codex = ProviderSnapshot("codex", "Codex", "/tmp/z", daily_usage=False)
+        codex.local = local
+        self.assertIsNone(codex.metric_percent("daily"))
+
 
 if __name__ == "__main__":
     unittest.main()

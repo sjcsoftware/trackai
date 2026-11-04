@@ -14,8 +14,10 @@ from .usage_api import ApiUsage, UsageAPIError, fetch
 
 
 class ProviderSnapshot:
-    def __init__(self, kind, name, config_dir, account=None):
+    def __init__(self, kind, name, config_dir, account=None, daily_usage=True):
         self.kind, self.name = kind, name
+        # Codex plans have only 5h and weekly windows; no daily row for them.
+        self.daily_usage = daily_usage
         self.account = account or credentials.Account(str(config_dir), True)
         self.credential_status = "missing"
         self.subscription_type = self.rate_limit_tier = None
@@ -37,7 +39,9 @@ class ProviderSnapshot:
             if limit:
                 return limit.percent
             return self.local.weekly_relative_percent if metric == "weekly" else None
-        return self.local.daily_relative_percent if self.local.has_daily_baseline else None
+        if not self.daily_usage or not self.local.has_daily_baseline:
+            return None
+        return self.local.daily_relative_percent
 
 
 class ClaudeLimitCache:
@@ -90,6 +94,7 @@ class ClaudeLimitCache:
 
 class ClaudeProvider:
     kind, name, command = "claude", "Claude Code", "claude"
+    daily_usage = True
 
     def __init__(self):
         self.scanners = {}
@@ -98,7 +103,7 @@ class ClaudeProvider:
     def scan(self, settings, force=False, offline=False):
         results = []
         for account in credentials.discover_accounts(settings.extra_config_dirs):
-            snap = ProviderSnapshot(self.kind, self.name, account.config_dir, account)
+            snap = ProviderSnapshot(self.kind, self.name, account.config_dir, account, self.daily_usage)
             creds, snap.credential_status = credentials.load(account)
             if not Path(account.config_dir).is_dir() and creds is None:
                 continue
@@ -118,6 +123,7 @@ class ClaudeProvider:
 
 class CodexProvider:
     kind, name, command = "codex", "Codex", "codex"
+    daily_usage = False
 
     def __init__(self):
         self.scanner = CodexSessionScanner()
@@ -126,7 +132,7 @@ class CodexProvider:
         home = codex_home(settings.codex_home)
         if not home.is_dir():
             return []
-        snap = ProviderSnapshot(self.kind, self.name, home)
+        snap = ProviderSnapshot(self.kind, self.name, home, daily_usage=self.daily_usage)
         account = read_account(home)
         if account:
             snap.credential_status = "ok"
@@ -155,7 +161,7 @@ def collect(providers, settings, force=False, offline=False):
         try:
             results.extend(provider.scan(settings, force, offline))
         except Exception as err:
-            snap = ProviderSnapshot(kind, provider.name, "")
+            snap = ProviderSnapshot(kind, provider.name, "", daily_usage=getattr(provider, "daily_usage", True))
             snap.api_error = "Could not read provider data ({})".format(type(err).__name__)
             results.append(snap)
     return results
