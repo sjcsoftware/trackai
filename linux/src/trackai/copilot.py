@@ -162,7 +162,7 @@ def parse_user(obj, fetched_at):
         detail = "{:,.0f} / {:,.0f}".format(used, entitlement) if used is not None and entitlement > 0 else None
         limits.append(LimitInfo(group, group, percent, reset, display_name=name + " (monthly)", detail=detail))
     plan = obj.get("copilot_plan") if isinstance(obj.get("copilot_plan"), str) else None
-    return ApiUsage(limits, None, fetched_at, plan)
+    return ApiUsage(limits, None, fetched_at, plan, credits)
 
 
 def fetch(token, host=DEFAULT_HOST):

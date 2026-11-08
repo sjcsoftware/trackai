@@ -66,7 +66,7 @@ dist/trackai-linux.tar.gz     Linux payload; installer selects by uname
    `ProviderKind` case, a `ProviderMark` glyph, and a `ProviderRegistry` entry.
    Nothing in the views or settings should need a per-provider branch beyond
    copy. Keep it that way. On Linux, snapshots describe themselves instead
-   (`primary_limit`/`primary_name`, `has_daily`, `cost_is_estimate`,
+   (`primary_limit`/`primary_name`, `has_daily`, `has_weekly`, `cost_is_estimate`,
    `command`, `LimitInfo.detail`), and `Settings.load()` appends kinds missing
    from a stored `providerOrder`.
 7. **The Mac app is ad-hoc signed, so a direct Keychain read re-prompts after
@@ -173,7 +173,12 @@ only if Google exposes a quota endpoint that a consumer token can actually call.
     (Codex 5h, Copilot monthly).
 12. **Copilot (Linux only for now) has only a monthly allowance.** Its
     snapshots set `primary_limit = "monthly"` and `has_daily = False`, so the
-    overview leads with it and the "session" and "daily" icon metrics read it. The quota comes from
+    overview leads with it and the "session" and "daily" icon metrics read it.
+    Token-based (AI credit) plans (`token_based_billing`, kept as
+    `ApiUsage.token_based`) also set `has_weekly = False`: no local Weekly row,
+    and "weekly" reads the monthly limit. Premium-request plans, or an unknown
+    plan, keep the local Weekly row. `COPILOT_CACHE_PREFIX` is versioned so old
+    cache entries without that field are not trusted after an update. The quota comes from
     `GET {api}/copilot_internal/user` with the token Copilot CLI already stores
     (never pasted, never written), through `LimitCache(prefix="copilot")` with
     Claude's floors and back-off. Copilot's own

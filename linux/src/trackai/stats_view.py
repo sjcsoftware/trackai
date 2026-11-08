@@ -242,7 +242,7 @@ def overview_card(data, settings):
     if weekly is not None:
         card.put(BarRow("Weekly limit", weekly.percent, week_figure,
                         Formatting.resets_in(weekly.resets_at) or "of your plan's weekly window", settings))
-    else:
+    elif data.has_weekly:
         card.put(BarRow("Weekly", local.weekly_relative_percent, week_figure,
                         "vs. busiest 7-day stretch", settings))
 

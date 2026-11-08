@@ -247,11 +247,15 @@ class CopilotTests(unittest.TestCase):
         # Copilot has no daily allowance: no Daily row, and "daily" reads the monthly limit.
         self.assertFalse(data.has_daily)
         self.assertAlmostEqual(data.metric_percent("daily"), 4.7)
+        # AI-credit billing has no weekly window either.
+        self.assertFalse(data.has_weekly)
+        self.assertAlmostEqual(data.metric_percent("weekly"), 4.7)
         self.assertEqual(data.local.all_time.messages, 1)
         cached = provider.scan(Settings().snapshot())[0]
         self.assertEqual(self.calls, ["https://github.com"])
         self.assertEqual((cached.api.limits[0].display_name, cached.api.limits[0].detail, cached.subscription_type),
                          ("AI credits (monthly)", "525 / 11,000", "business"))
+        self.assertFalse(cached.has_weekly)
         for path in (Path(self.tmp.name) / "cache").iterdir():
             self.assertTrue(path.name.startswith("copilot-"))
             self.assertNotIn("fixture-token", path.name + path.read_text())
@@ -269,6 +273,13 @@ class CopilotTests(unittest.TestCase):
         live = provider.scan(Settings().snapshot())[0]
         self.assertAlmostEqual(live.api.limits[0].percent, 4.7)
         self.assertIsNone(live.api_error)
+
+    def test_premium_request_plans_and_unknown_plans_keep_weekly(self):
+        self.write("a", [copilot_record()])
+        legacy = self.provider(fetched=copilot_user(token_billing=False)).scan(Settings().snapshot())[0]
+        self.assertTrue(legacy.has_weekly)
+        self.assertEqual(legacy.metric_percent("weekly"), legacy.local.weekly_relative_percent)
+        self.assertTrue(self.provider(token=None).scan(Settings().snapshot())[0].has_weekly)
 
     def test_unreadable_login_and_unlimited_plan(self):
         data = self.provider(token=None).scan(Settings().snapshot())[0]

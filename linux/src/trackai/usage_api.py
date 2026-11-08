@@ -51,13 +51,14 @@ class LimitInfo(object):
 
 
 class ApiUsage(object):
-    __slots__ = ("limits", "extra_credits_used", "fetched_at", "plan")
+    __slots__ = ("limits", "extra_credits_used", "fetched_at", "plan", "token_based")
 
-    def __init__(self, limits, extra_credits_used, fetched_at, plan=None):
+    def __init__(self, limits, extra_credits_used, fetched_at, plan=None, token_based=False):
         self.limits = limits
         self.extra_credits_used = extra_credits_used   # USD
         self.fetched_at = fetched_at
         self.plan = plan
+        self.token_based = token_based    # billed in AI credits, with no weekly window
 
     def limit(self, group):
         # type: (str) -> "LimitInfo | None"
@@ -91,6 +92,8 @@ class ApiUsage(object):
             d["extraCreditsUsed"] = self.extra_credits_used
         if self.plan:
             d["plan"] = self.plan
+        if self.token_based:
+            d["tokenBased"] = True
         return d
 
     @staticmethod
@@ -123,6 +126,7 @@ class ApiUsage(object):
             extra_credits_used=float(extra) if isinstance(extra, (int, float)) else None,
             fetched_at=datetime.fromtimestamp(ts, timezone.utc),
             plan=d["plan"] if isinstance(d.get("plan"), str) else None,
+            token_based=d.get("tokenBased") is True,
         )
 
 

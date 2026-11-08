@@ -50,12 +50,12 @@ data.account.email = "octocat"
 data.subscription_type = "business"
 data.credential_status = "ok"
 data.primary_limit, data.primary_name = "monthly", "Monthly"
-data.has_daily = False
+data.has_daily = data.has_weekly = False
 data.local = TranscriptScanner()._aggregate([
     UsageEntry(str(i), "claude-sonnet-5", now - timedelta(days=i, minutes=10), 400, 20000, 5000, 150000, 0.2)
     for i in range(4)])
 data.api = ApiUsage([LimitInfo("monthly", "monthly", 4.7, now + timedelta(days=20),
-                               display_name="AI credits (monthly)", detail="525 / 11,000")], None, now, "business")
+                               display_name="AI credits (monthly)", detail="525 / 11,000")], None, now, "business", True)
 state.accounts.append(data)
 state.last_refresh = now
 panel = StatsPanel(state, lambda: None, lambda: None)
@@ -91,6 +91,7 @@ assert panel.get_size()[1] < 700, "overview should fit without scrolling"
 texts = [label.get_text() for label in _labels(panel.root)]
 assert texts.count("Daily") == 1, "only Claude has a Daily row; Codex and Copilot have no daily limit"
 assert "AI credits (monthly)" in texts and "525 / 11,000" in texts, "Copilot's monthly limit leads its card"
+assert "Weekly" not in texts, "AI-credit Copilot plans have no weekly window, so no local Weekly row"
 panel.detailed = True
 panel.rebuild()
 render(panel, "linux-detailed")

@@ -27,6 +27,8 @@ class ProviderSnapshot:
         # Providers without a daily allowance (Codex, Copilot) get no Daily
         # row, and a "daily" icon metric falls back to their primary limit.
         self.has_daily = True
+        # Likewise for weekly: no Weekly row, and "weekly" reads the primary limit.
+        self.has_weekly = True
         # The limit group the overview and the "session" metric show.
         self.primary_limit, self.primary_name = "session", "Session (5h)"
         self.cost_is_estimate = False
@@ -40,7 +42,7 @@ class ProviderSnapshot:
         return self.name + (" · " + self.account.email if self.account.email else "")
 
     def metric_percent(self, metric):
-        if metric == "daily" and not self.has_daily:
+        if (metric == "daily" and not self.has_daily) or (metric == "weekly" and not self.has_weekly):
             metric = "session"
         if metric in ("session", "weekly"):
             group = self.primary_limit if metric == "session" else metric
@@ -157,6 +159,11 @@ class CodexProvider:
         return [snap]
 
 
+# Bump when cached Copilot entries lack a field the panel now relies on
+# (v2: tokenBased), so updated installs refetch instead of trusting them.
+COPILOT_CACHE_PREFIX = "copilot-v2"
+
+
 class CopilotProvider:
     kind, name, command = "copilot", "Copilot", "copilot"
 
@@ -186,7 +193,7 @@ class CopilotProvider:
             cache = self.caches.get(host)
             if cache is None:
                 cache = self.caches[host] = LimitCache(
-                    self.cache_root, functools.partial(copilot.fetch, host=host), prefix="copilot")
+                    self.cache_root, functools.partial(copilot.fetch, host=host), prefix=COPILOT_CACHE_PREFIX)
             try:
                 live, error = cache.get(token, force, allow_fetch=not offline)
             except OSError:
@@ -199,6 +206,8 @@ class CopilotProvider:
             snap.api, snap.api_error = live, error
         if snap.api is not None:
             snap.subscription_type = snap.api.plan
+            # Token-based (AI credit) plans have only a monthly allowance.
+            snap.has_weekly = not snap.api.token_based
             if not snap.api.limits:
                 snap.api, snap.api_error = None, "No usage limits on this Copilot plan"
         elif snap.api_error is None and not offline and not token:
