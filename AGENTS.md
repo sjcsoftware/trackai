@@ -4,9 +4,6 @@ Claude Code + Codex usage monitor for the macOS menu bar and Linux system tray.
 Swift/SwiftUI on macOS 13+ (universal); Python/GTK 3 on Linux (Ubuntu 22.04+).
 MIT, © 2026 Cha Seungjoon.
 
-Baseline this grew out of: `sjcsoftware/trackclaude` (single-provider, macOS + Linux).
-trackai supports both platforms and multiple providers.
-
 ## Layout
 
 ```
