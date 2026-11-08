@@ -3,6 +3,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -11,6 +12,9 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
+_INSTALLER = (ROOT / "install.sh").read_text()
+REFS = {name: re.search(r'^%s="([^"]+)"$' % name, _INSTALLER, re.M).group(1)
+        for name in ("MACOS_REF", "LINUX_REF", "THIS_REF")}
 
 
 class InstallTests(unittest.TestCase):
@@ -39,8 +43,15 @@ class InstallTests(unittest.TestCase):
         self.shim("sudo", 'echo "unexpected sudo" >&2; exit 99')
         self.shim("secret-tool", 'exit 1')
         self.shim("trackai", 'exit 0')
-        self.shim("curl", 'echo "$*" >> "$TEST_URLS"\n[ "${FAIL_DOWNLOAD:-}" != "1" ] || exit 22\nwhile [ "$#" -gt 0 ]; do if [ "$1" = "-o" ]; then cp "$TEST_PAYLOAD" "$2"; exit; fi; shift; done\nexit 1')
+        # Downloads of an install.sh get a stub that records the hand-off.
+        self.shim("curl", 'echo "$*" >> "$TEST_URLS"\n[ "${FAIL_DOWNLOAD:-}" != "1" ] || exit 22\n'
+                  'src="$TEST_PAYLOAD"; case "$*" in */install.sh*) src="$TEST_INSTALLER";; esac\n'
+                  'while [ "$#" -gt 0 ]; do if [ "$1" = "-o" ]; then cp "$src" "$2"; exit; fi; shift; done\nexit 1')
         self.env["TEST_URLS"] = str(self.root / "urls")
+        stub = self.root / "handoff.sh"
+        stub.write_text('echo "ref=$TRACKAI_REF" > "$TEST_HANDOFF"\n')
+        self.env["TEST_INSTALLER"] = str(stub)
+        self.env["TEST_HANDOFF"] = str(self.root / "handoff")
         payload = self.root / "payload.tar.gz"
         with tarfile.open(payload, "w:gz") as archive:
             for directory in ("linux/src/trackai", "linux/bin", "linux/packaging", "linux/scripts"):
@@ -61,12 +72,42 @@ class InstallTests(unittest.TestCase):
         return subprocess.run([str(self.home / ".local/bin/trackai"), *args],
                               text=True, capture_output=True, env=self.env, cwd=self.root, timeout=15)
 
-    def test_piped_installer_detects_linux_and_installed_cli_is_headless(self):
+    def urls(self):
+        return Path(self.env["TEST_URLS"]).read_text()
+
+    def assert_routed(self, platform_ref, payload):
+        """Unpinned, the installer either installs from the platform's branch
+        or hands off to that branch's installer with TRACKAI_REF set."""
+        if REFS["THIS_REF"] == platform_ref:
+            self.assertIn("/%s/dist/%s" % (platform_ref, payload), self.urls())
+            self.assertFalse(Path(self.env["TEST_HANDOFF"]).exists())
+        else:
+            self.assertIn("/%s/install.sh" % platform_ref, self.urls())
+            self.assertNotIn("/dist/", self.urls())
+            self.assertEqual(Path(self.env["TEST_HANDOFF"]).read_text().strip(), "ref=" + platform_ref)
+
+    def test_linux_is_routed_to_the_linux_branch(self):
         result = self.install()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        urls = Path(self.env["TEST_URLS"]).read_text()
-        self.assertIn("/main/dist/trackai-linux.tar.gz", urls)
-        self.assertNotIn("TrackAI.zip", urls)
+        self.assertNotIn("TrackAI.zip", self.urls())
+        self.assert_routed(REFS["LINUX_REF"], "trackai-linux.tar.gz")
+
+    def test_macos_is_routed_to_the_mac_branch(self):
+        self.env["TEST_OS"] = "Darwin"
+        self.install()
+        self.assertNotIn("trackai-linux.tar.gz", self.urls())
+        if REFS["THIS_REF"] == REFS["MACOS_REF"]:
+            # The real Mac install would follow; the zip download is enough here.
+            self.assertIn("/%s/dist/TrackAI.zip" % REFS["MACOS_REF"], self.urls())
+        else:
+            self.assert_routed(REFS["MACOS_REF"], "TrackAI.zip")
+
+    def test_handed_off_installer_installs_linux_and_cli_is_headless(self):
+        self.env["TRACKAI_REF"] = REFS["LINUX_REF"]
+        result = self.install()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("/%s/dist/trackai-linux.tar.gz" % REFS["LINUX_REF"], self.urls())
+        self.assertNotIn("install.sh", self.urls())
         desktop = (self.home / "data/applications/trackai.desktop").read_text()
         self.assertIn('Exec="' + str(self.home / ".local/bin/trackai") + '" start', desktop)
         stats = self.cli("stats", "--offline")
@@ -85,23 +126,27 @@ class InstallTests(unittest.TestCase):
         self.assertFalse(Path(self.env["TEST_URLS"]).exists())
 
     def test_explicit_ref_is_respected(self):
-        self.env["TRACKAI_REF"] = "linux-support"
+        self.env["TRACKAI_REF"] = "some-branch"
         result = self.install()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("/linux-support/dist/trackai-linux.tar.gz", Path(self.env["TEST_URLS"]).read_text())
+        self.assertIn("/some-branch/dist/trackai-linux.tar.gz", self.urls())
+        self.assertNotIn("install.sh", self.urls())
 
     def test_download_failure_preserves_existing_installation(self):
         dest = self.home / "data/trackai"
         dest.mkdir(parents=True)
         (dest / "keep").write_text("installed")
         self.env["FAIL_DOWNLOAD"] = "1"
-        self.assertNotEqual(self.install().returncode, 0)
-        self.assertEqual((dest / "keep").read_text(), "installed")
+        for ref in (None, REFS["LINUX_REF"]):     # the hand-off or the payload fails
+            if ref:
+                self.env["TRACKAI_REF"] = ref
+            self.assertNotEqual(self.install().returncode, 0)
+            self.assertEqual((dest / "keep").read_text(), "installed")
 
     def test_macos_selects_mac_archive_before_installation(self):
-        self.env.update(TEST_OS="Darwin", FAIL_DOWNLOAD="1")
+        self.env.update(TEST_OS="Darwin", FAIL_DOWNLOAD="1", TRACKAI_REF=REFS["MACOS_REF"])
         self.assertNotEqual(self.install().returncode, 0)
-        self.assertIn("/main/dist/TrackAI.zip", Path(self.env["TEST_URLS"]).read_text())
+        self.assertIn("/%s/dist/TrackAI.zip" % REFS["MACOS_REF"], self.urls())
 
     def test_unsupported_os_does_not_download(self):
         self.env["TEST_OS"] = "FreeBSD"
@@ -111,7 +156,9 @@ class InstallTests(unittest.TestCase):
         self.assertFalse(Path(self.env["TEST_URLS"]).exists())
 
     def test_pid_file_cannot_signal_unrelated_process(self):
+        self.env["TRACKAI_REF"] = REFS["LINUX_REF"]     # install the CLI itself, no hand-off
         self.assertEqual(self.install().returncode, 0)
+        self.env.pop("TRACKAI_REF")
         self.env["TRACKAI_PYTHON"] = shutil.which("python3")
         pid = self.home / "cache/trackai/trackai.pid"
         pid.parent.mkdir(parents=True, exist_ok=True)

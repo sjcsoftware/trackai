@@ -29,6 +29,9 @@ Sources/trackai/
   Views/                      Components, ProviderBoxes, PanelView, SettingsView
 linux/src/trackai/           GTK app, provider registry, scanners, settings
 linux/src/trackai/provider_mark.py  same outlines drawn with cairo
+linux/src/trackai/sni.py      StatusNotifierItem served over Gio D-Bus (no libappindicator)
+linux/src/trackai/popup.py    override-redirect panel + seat grab; x11.py finds the bar rect
+linux/src/trackai/style.py    palette/CSS from the GTK theme accent
 linux/bin/trackai             Linux CLI (separate from signed Mac bundle)
 linux/scripts/build.sh        tests + reproducible Linux source archive
 linux/scripts/smoke-ui.py     GTK checks and screenshots using synthetic data
@@ -121,15 +124,50 @@ only if Google exposes a quota endpoint that a consumer token can actually call.
   macro plugin, so the build fails. Build against the 26.x SDK:
   `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk ./scripts/build.sh <version>`.
 
+## Branches and releases
+
+11. **Linux ships from `linux-gtk`, macOS from `main`,** until `linux-gtk` is
+    merged. `install.sh` sets `MACOS_REF`, `LINUX_REF` and `THIS_REF` (the
+    branch that copy is committed on, so it is the one line that differs
+    between the branches). Without `TRACKAI_REF`, an installer on the wrong
+    branch for this OS downloads the right branch's `install.sh` and runs it
+    with `TRACKAI_REF` set, so the install steps always match the payload.
+    Both CLIs' `update` fetch `main/install.sh`, so plain `trackai update`
+    lands on the right branch everywhere. When merging, set `LINUX_REF="main"`
+    and keep `THIS_REF` per branch. Linux releases are tagged on `linux-gtk`
+    and ship only `trackai-linux.tar.gz`; release notes say plain
+    `trackai update`.
+
+## Linux tray
+
+8. **Linux serves its own StatusNotifierItem.** libappindicator marks items
+   menu-only, so hosts open a menu on click; ours sets `ItemIsMenu=false` and
+   handles `Activate(x, y)` by opening the panel there. There is no hover:
+   `Title` and `ToolTip` stay empty (hosts render them as tooltips, and they
+   could not keep up with live numbers). Re-register whenever
+   `org.kde.StatusNotifierWatcher` reappears (bars restart). With no watcher
+   on X11, fall back to `Gtk.StatusIcon` (XEmbed), also without a tooltip.
+9. **The panel is an override-redirect popup on X11** with a pointer+keyboard
+   seat grab: only Escape or an outside click closes it. Placement uses the
+   rect of the top-level window under the click (the bar), because i3 and many
+   bars set no `_NET_WORKAREA`/struts. Wayland keeps an undecorated top-level.
+   Never style per desktop: colours come from the GTK theme accent.
+10. **Codex has no daily limit.** Its snapshots set `has_daily = False`: no
+    Daily row in the panel, and the "daily" icon metric reads its 5h limit.
+
 ## Linux verification
 
 - Run `python3 -m unittest discover -s linux/tests -v` (standard library only).
+- Tray end-to-end: Xephyr (parented to an unmapped window) on a private
+  `dbus-run-session` with a stub watcher; check registration, `ItemIsMenu`,
+  placement under a 46px top bar, Escape / outside-click dismissal, page
+  switching, and re-registration after the watcher restarts.
 - Run `/usr/bin/python3 linux/scripts/smoke-ui.py /tmp/trackai-preview` with a
   display, or prefix with `xvfb-run -a` in CI. It uses synthetic data only.
 - `linux/scripts/build.sh` runs tests and regenerates the committed payload.
-- The installer must select the OS automatically through the same `main` URL.
-  `TRACKAI_REF` is an optional developer override; never mix it with latest-release
-  fallback downloads from another ref.
+- The installer must select the OS automatically through the same `main` URL
+  (see invariant 11). `TRACKAI_REF` is an optional developer override; never
+  mix it with latest-release fallback downloads from another ref.
 - Ubuntu 24.04 local Claude/Codex accounting and GTK windows have been verified.
   Linux never changes CLI credentials. Its Claude cache uses a cross-process
   lock and persists freshness/back-off, including requests from `stats`.

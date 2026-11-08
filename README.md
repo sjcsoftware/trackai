@@ -11,12 +11,20 @@ Native Swift + SwiftUI on macOS; Python + GTK 3 on Linux, adapted from [trackcla
 
 ## Install
 
-**The same command works on macOS and Linux.** The script detects the operating system and downloads the matching payload from `main`. Users do not need to select a branch, architecture, or build anything.
+**The same command works on macOS and Linux.** The script detects the operating system and installs the matching build: macOS from `main`, Linux from the `linux-gtk` branch, where the GTK app is developed. Users do not need to select a branch, architecture, or build anything.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/sjcsoftware/trackai/main/install.sh | bash
 trackai setup
 ```
+
+To update later, on either system:
+
+```sh
+trackai update
+```
+
+`update` goes through the same installer, so it also picks the right build for the operating system and restarts the app. Developers can pin a branch or tag with `TRACKAI_REF=<ref>`.
 
 Setup reads the logins the CLIs already keep on this machine. If neither tool is set up yet, run `claude` and/or `codex` in a terminal, log in, then run setup again. One provider is enough. TrackAI never refreshes, rewrites, or asks you to paste a credential.
 
@@ -30,7 +38,6 @@ Requires Python 3.8+ and a graphical desktop for the tray. Nothing is compiled. 
 
 - `python3`, `python3-gi`, `python3-gi-cairo`, `python3-cairo`
 - `gir1.2-gtk-3.0`
-- `gir1.2-ayatanaappindicator3-0.1` (or the older AppIndicator binding)
 
 Only installing missing system packages requires sudo. Run the installer as your normal desktop user. The app, launcher, and preferences live in your home directory:
 
@@ -40,12 +47,18 @@ Only installing missing system packages requires sudo. Run the installer as your
 | `~/.local/bin/trackai` | Linux CLI |
 | `~/.local/share/applications/trackai.desktop` | Desktop launcher |
 | `~/.config/trackai/settings.json` | Preferences |
-| `~/.cache/trackai/` | Limit cache, icons, PID, and log |
+| `~/.cache/trackai/` | Limit cache, PID, and log |
 | `~/.config/autostart/trackai.desktop` | Optional launch-at-login entry |
 
 The standard `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, and `XDG_CACHE_HOME` overrides are respected. If `~/.local/bin` is missing from your shell's PATH, add `export PATH="$HOME/.local/bin:$PATH"` to your shell configuration, or use the full CLI path printed by the installer.
 
-Ubuntu's GNOME desktop normally includes AppIndicator support. If the app runs but no tray icon appears, enable the Ubuntu AppIndicators extension. On stock GNOME, install `gnome-shell-extension-appindicator`, then log out and back in. Open the panel from the tray menu, or middle-click the icon. Classic X11 trays support direct left-click through a fallback icon.
+The tray icon is a StatusNotifierItem, the protocol KDE, the GNOME AppIndicator extension, waybar, eww, polybar and xfce4-panel all host. Trays without it (i3bar, stalonetray, older panels) get a classic XEmbed icon instead; if a StatusNotifierItem tray starts later, the icon moves to it.
+
+Click the icon to open the panel, then switch between **Overview** and **Detailed**. The panel stays open until you press Escape or click anywhere outside it. The icon has no hover tooltip.
+
+On X11 the panel is an override-redirect window, so tiling window managers such as i3 never tile or move it. It opens beside the bar you clicked in (below a top bar, above a bottom bar), even when the bar reserves no screen space. Its colours follow your GTK theme's accent and light or dark mode. On Wayland the compositor decides where windows go, so the panel closes when it loses focus instead.
+
+Ubuntu's GNOME desktop includes the AppIndicator extension that hosts the icon. On stock GNOME, install `gnome-shell-extension-appindicator`, then log out and back in.
 
 On other distributions, the installer checks the same bindings and prints equivalent Fedora/Arch package commands if they are missing. Those distributions are not yet verified. `trackai stats` runs without GTK or a display, including over SSH.
 
@@ -59,11 +72,11 @@ On other distributions, the installer checks the same bindings and prints equiva
 
 **Detailed** shows every reported plan window, local token totals for today / five hours / seven days / 30 days / all time, a 30-day input/output/cache split and model breakdown, and the account, plan, and observation time.
 
-Linux also shows live summaries in the tray menu. Additional Claude config directories appear as separate account boxes on Linux.
+Codex has no daily limit, so its box has no Daily row; when the icon follows daily usage, Codex contributes its 5-hour limit instead. Additional Claude config directories appear as separate account boxes on Linux.
 
 ## Settings
 
-Use the gear in the panel or **Settings…** in the Linux tray menu:
+Use the gear in the panel:
 
 - Enable providers, change their order, add Claude config directories, and override `CODEX_HOME`.
 - Choose daily, session, or weekly usage for the icon; combine selected providers by average or highest usage, or select one account/provider.
@@ -71,7 +84,7 @@ Use the gear in the panel or **Settings…** in the Linux tray menu:
 - Adjust transparency, select an opaque background, set the refresh interval, and enable launch at login.
 - macOS: "Skip the Keychain password prompt" (on by default) reads Claude Code's login through Apple's `security` tool, which Claude Code itself saves it with. Turned off, trackai reads the Keychain directly and macOS asks for your login password again after every update.
 
-On macOS, drag provider logos to reorder them; Linux uses up/down buttons. The Mac menu bar can show a provider glyph or a filling bolt; Linux uses a colored bolt. macOS has native background blur; Linux uses a translucent window. GNOME's tray protocol opens a menu before the custom panel.
+On macOS, drag provider logos to reorder them; Linux uses up/down buttons. On both, the icon is a bolt that fills with usage, or the provider's own mark when **Single account** or **Highest** picks one provider. macOS has native background blur; on Linux, blur depends on the compositor. The percentage next to the icon appears only in trays that support text labels (GNOME, Ayatana).
 
 ## Where the numbers come from
 
