@@ -156,7 +156,9 @@ class InstallTests(unittest.TestCase):
         self.assertFalse(Path(self.env["TEST_URLS"]).exists())
 
     def test_pid_file_cannot_signal_unrelated_process(self):
+        self.env["TRACKAI_REF"] = REFS["LINUX_REF"]     # install the CLI itself, no hand-off
         self.assertEqual(self.install().returncode, 0)
+        self.env.pop("TRACKAI_REF")
         self.env["TRACKAI_PYTHON"] = shutil.which("python3")
         pid = self.home / "cache/trackai/trackai.pid"
         pid.parent.mkdir(parents=True, exist_ok=True)
