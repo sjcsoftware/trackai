@@ -7,9 +7,14 @@
 set -euo pipefail
 
 REPO="sjcsoftware/trackai"
-# Branch or tag the payloads are fetched from. Override to install from a branch:
-#   curl -fsSL .../<branch>/install.sh | TRACKAI_REF=<branch> bash
-REF="${TRACKAI_REF:-main}"
+# Each platform ships from its own branch: the GTK app lives on linux-gtk until
+# it is merged into main. THIS_REF is the branch this copy of the script is
+# committed on; it is the one line that differs between the branches.
+MACOS_REF="main"
+LINUX_REF="linux-gtk"
+THIS_REF="linux-gtk"
+# Developers can pin a branch or tag instead:
+#   curl -fsSL .../<ref>/install.sh | TRACKAI_REF=<ref> bash
 PYTHON="${TRACKAI_PYTHON:-/usr/bin/python3}"
 MAC_ZIP="TrackAI.zip"
 LINUX_TARBALL="trackai-linux.tar.gz"
@@ -40,6 +45,20 @@ fi
 is_checkout() {
     [ -n "$SELF_DIR" ] && [ -f "$SELF_DIR/bin/trackai" ] && [ -d "$SELF_DIR/linux/src/trackai" ]
 }
+
+if [ "$PLATFORM" = "macos" ]; then PLATFORM_REF="$MACOS_REF"; else PLATFORM_REF="$LINUX_REF"; fi
+
+# On the wrong branch for this OS (e.g. Linux running main's installer, which
+# is what `trackai update` fetches): run that branch's installer instead, so
+# the install steps always match the payload they install.
+if [ -z "${TRACKAI_REF:-}" ] && [ "$PLATFORM_REF" != "$THIS_REF" ] && ! is_checkout; then
+    curl --retry 3 --connect-timeout 15 -fsSL \
+        "https://raw.githubusercontent.com/$REPO/$PLATFORM_REF/install.sh" -o "$TMP/install.sh" \
+        || { echo "Download failed (installer from $PLATFORM_REF)." >&2; exit 1; }
+    TRACKAI_REF="$PLATFORM_REF" bash "$TMP/install.sh"
+    exit $?
+fi
+REF="${TRACKAI_REF:-$PLATFORM_REF}"
 
 # Installs the platform CLI from $1 and reports the path it landed in.
 install_cli() {

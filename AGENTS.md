@@ -67,6 +67,15 @@ dist/trackai-linux.tar.gz     Linux payload; installer selects by uname
    `ProviderKind` case, a `ProviderMark` glyph, and a `ProviderRegistry` entry.
    Nothing in the views or settings should need a per-provider branch beyond
    copy. Keep it that way.
+7. **The Mac app is ad-hoc signed, so a direct Keychain read re-prompts after
+   every build.** Claude Code writes `Claude Code-credentials` with
+   `/usr/bin/security add-generic-password -U`, which keeps `security` on the
+   item's ACL and in its `apple-tool:` partition. "Skip the Keychain password
+   prompt" (`claudeSkipKeychainPrompt`, on by default) reads through that tool
+   and never shows a dialog. With it off, `ClaudeAuth` first probes with
+   `SecKeychainSetUserInteractionAllowed(false)` (the file keychain ignores
+   `kSecUseAuthenticationUI`) and floats `KeychainPromptHint` only while the
+   real dialog is up. Linux reads files or Secret Service and has no equivalent.
 
 ## Data formats relied on
 
@@ -115,23 +124,36 @@ only if Google exposes a quota endpoint that a consumer token can actually call.
   macro plugin, so the build fails. Build against the 26.x SDK:
   `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk ./scripts/build.sh <version>`.
 
+## Branches and releases
+
+11. **Linux ships from `linux-gtk`, macOS from `main`,** until `linux-gtk` is
+    merged. `install.sh` sets `MACOS_REF`, `LINUX_REF` and `THIS_REF` (the
+    branch that copy is committed on, so it is the one line that differs
+    between the branches). Without `TRACKAI_REF`, an installer on the wrong
+    branch for this OS downloads the right branch's `install.sh` and runs it
+    with `TRACKAI_REF` set, so the install steps always match the payload.
+    Both CLIs' `update` fetch `main/install.sh`, so plain `trackai update`
+    lands on the right branch everywhere. When merging, set `LINUX_REF="main"`
+    and keep `THIS_REF` per branch. Linux releases are tagged on `linux-gtk`
+    and ship only `trackai-linux.tar.gz`; release notes say plain
+    `trackai update`.
+
 ## Linux tray
 
-7. **Linux serves its own StatusNotifierItem.** libappindicator marks items
+8. **Linux serves its own StatusNotifierItem.** libappindicator marks items
    menu-only, so hosts open a menu on click; ours sets `ItemIsMenu=false` and
    handles `Activate(x, y)` by opening the panel there. There is no hover:
    `Title` and `ToolTip` stay empty (hosts render them as tooltips, and they
-   could not keep up with live numbers). Re-register
-   whenever `org.kde.StatusNotifierWatcher` reappears (bars restart). With no
-   watcher on X11, fall back to `Gtk.StatusIcon` (XEmbed), also without a
-   tooltip.
-9. **Codex has no daily limit.** Its snapshots set `has_daily = False`: no
-   Daily row in the panel, and the "daily" icon metric reads its 5h limit.
-8. **The panel is an override-redirect popup on X11** with a pointer+keyboard
+   could not keep up with live numbers). Re-register whenever
+   `org.kde.StatusNotifierWatcher` reappears (bars restart). With no watcher
+   on X11, fall back to `Gtk.StatusIcon` (XEmbed), also without a tooltip.
+9. **The panel is an override-redirect popup on X11** with a pointer+keyboard
    seat grab: only Escape or an outside click closes it. Placement uses the
    rect of the top-level window under the click (the bar), because i3 and many
    bars set no `_NET_WORKAREA`/struts. Wayland keeps an undecorated top-level.
    Never style per desktop: colours come from the GTK theme accent.
+10. **Codex has no daily limit.** Its snapshots set `has_daily = False`: no
+    Daily row in the panel, and the "daily" icon metric reads its 5h limit.
 
 ## Linux verification
 
@@ -143,9 +165,9 @@ only if Google exposes a quota endpoint that a consumer token can actually call.
 - Run `/usr/bin/python3 linux/scripts/smoke-ui.py /tmp/trackai-preview` with a
   display, or prefix with `xvfb-run -a` in CI. It uses synthetic data only.
 - `linux/scripts/build.sh` runs tests and regenerates the committed payload.
-- The installer must select the OS automatically through the same `main` URL.
-  `TRACKAI_REF` is an optional developer override; never mix it with latest-release
-  fallback downloads from another ref.
+- The installer must select the OS automatically through the same `main` URL
+  (see invariant 11). `TRACKAI_REF` is an optional developer override; never
+  mix it with latest-release fallback downloads from another ref.
 - Ubuntu 24.04 local Claude/Codex accounting and GTK windows have been verified.
   Linux never changes CLI credentials. Its Claude cache uses a cross-process
   lock and persists freshness/back-off, including requests from `stats`.

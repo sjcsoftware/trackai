@@ -11,12 +11,20 @@ Native Swift + SwiftUI on macOS; Python + GTK 3 on Linux, adapted from [trackcla
 
 ## Install
 
-**The same command works on macOS and Linux.** The script detects the operating system and downloads the matching payload from `main`. Users do not need to select a branch, architecture, or build anything.
+**The same command works on macOS and Linux.** The script detects the operating system and installs the matching build: macOS from `main`, Linux from the `linux-gtk` branch, where the GTK app is developed. Users do not need to select a branch, architecture, or build anything.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/sjcsoftware/trackai/main/install.sh | bash
 trackai setup
 ```
+
+To update later, on either system:
+
+```sh
+trackai update
+```
+
+`update` goes through the same installer, so it also picks the right build for the operating system and restarts the app. Developers can pin a branch or tag with `TRACKAI_REF=<ref>`.
 
 Setup reads the logins the CLIs already keep on this machine. If neither tool is set up yet, run `claude` and/or `codex` in a terminal, log in, then run setup again. One provider is enough. TrackAI never refreshes, rewrites, or asks you to paste a credential.
 
@@ -74,6 +82,7 @@ Use the gear in the panel:
 - Choose daily, session, or weekly usage for the icon; combine selected providers by average or highest usage, or select one account/provider.
 - Show the percentage next to the icon; adjust the orange/red thresholds (50% / 80% by default).
 - Adjust transparency, select an opaque background, set the refresh interval, and enable launch at login.
+- macOS: "Skip the Keychain password prompt" (on by default) reads Claude Code's login through Apple's `security` tool, which Claude Code itself saves it with. Turned off, trackai reads the Keychain directly and macOS asks for your login password again after every update.
 
 On macOS, drag provider logos to reorder them; Linux uses up/down buttons. On both, the icon is a bolt that fills with usage, or the provider's own mark when **Single account** or **Highest** picks one provider. macOS has native background blur; on Linux, blur depends on the compositor. The percentage next to the icon appears only in trays that support text labels (GNOME, Ayatana).
 
@@ -81,7 +90,7 @@ On macOS, drag provider logos to reorder them; Linux uses up/down buttons. On bo
 
 | | Claude Code | Codex |
 |---|---|---|
-| Login | `~/.claude/.credentials.json`, with read-only Keychain fallback on macOS or `secret-tool` on Linux | `~/.codex/auth.json`; JWT claims carry the account and plan |
+| Login | `~/.claude/.credentials.json`, with read-only Keychain fallback on macOS (through Apple's `security` tool, so no password prompt) or `secret-tool` on Linux | `~/.codex/auth.json`; JWT claims carry the account and plan |
 | Tokens | `~/.claude/projects/**/*.jsonl` assistant records | `~/.codex/sessions/**/*.jsonl`; new `token_usage_record` entries or older `token_count` deltas |
 | Plan limits | Anthropic's OAuth usage endpoint | `rate_limits` snapshots in the CLI's rollout logs |
 
