@@ -3,9 +3,8 @@
 The icon is a StatusNotifierItem we serve ourselves (``sni``), which every
 modern tray speaks: KDE, the GNOME AppIndicator extension, waybar, eww,
 polybar's and xfce4-panel's SNI plugins. A click opens the panel at the icon;
-hovering shows the host's tooltip with a short summary. Without a
-StatusNotifierWatcher (i3bar, stalonetray, older panels) the classic XEmbed
-tray icon takes over, and its hover shows the same summary as a small card.
+there is deliberately no hover tooltip. Without a StatusNotifierWatcher
+(i3bar, stalonetray, older panels) the classic XEmbed tray icon takes over.
 If a watcher appears later (a bar that starts after us), we switch to it.
 """
 
@@ -24,11 +23,11 @@ gi.require_version("Gdk", "3.0")
 
 from gi.repository import Gdk, GLib, Gtk   # noqa: E402
 
-from . import sni, status_icon, summary   # noqa: E402
+from . import sni, status_icon   # noqa: E402
 from .settings import PID_FILE, Settings, ensure_dir   # noqa: E402
 from .state import AppState           # noqa: E402
 from .settings_view import SettingsWindow   # noqa: E402
-from .stats_view import HoverCard, StatsPanel   # noqa: E402
+from .stats_view import StatsPanel   # noqa: E402
 
 ITEM_ID = "trackai"
 XEMBED_SIZE = 22
@@ -49,7 +48,7 @@ class TrayApp(object):
         self._xembed_size = XEMBED_SIZE
         self._appearance = None
 
-        self.item = sni.StatusNotifierItem(ITEM_ID, "trackai", self._on_item_activate,
+        self.item = sni.StatusNotifierItem(ITEM_ID, self._on_item_activate,
                                            self._on_host_changed)
         if not self.item.start():
             self._show_xembed(True)
@@ -107,8 +106,7 @@ class TrayApp(object):
                 sys.stderr.write("trackai: no system tray available ({}).\n".format(err))
                 return
             icon.set_title("trackai")
-            icon.set_has_tooltip(True)
-            icon.connect("query-tooltip", self._on_xembed_tooltip)
+            icon.set_has_tooltip(False)
             icon.connect("activate", self._on_xembed_click)
             icon.connect("popup-menu", lambda icon, *_: self._on_xembed_click(icon))
             icon.connect("size-changed", self._on_xembed_size)
@@ -122,12 +120,6 @@ class TrayApp(object):
         rect = (area.x, area.y, area.width, area.height) if ok else None
         self.panel.toggle_at(None, None, rect)
 
-    def _on_xembed_tooltip(self, _icon, _x, _y, _keyboard, tooltip):
-        if self.panel.get_visible():
-            return False
-        tooltip.set_custom(HoverCard(self.state))
-        return True
-
     def _on_xembed_size(self, _icon, size):
         self._xembed_size = max(16, int(size))
         self._appearance = None
@@ -140,12 +132,12 @@ class TrayApp(object):
         percent = self.state.icon_percent()
         state = self.settings.usage_color_name(percent) if percent is not None else "gray"
         kind = self.state.icon_kind()
-        label = summary.label(percent) if self.settings.show_percent_in_menu_bar else ""
-        title, body = summary.tooltip(self.state.accounts, self.settings)
+        label = ""
+        if self.settings.show_percent_in_menu_bar and percent is not None:
+            label = "{:.0f}%".format(percent)
 
         self.item.set_icon(status_icon.pixmaps(state, kind, percent))
         self.item.set_label(label, "100%")
-        self.item.set_tooltip(title, body)
 
         if self._xembed is not None:
             level = None if kind else int(round((percent or 0) / 5.0)) * 5

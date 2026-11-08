@@ -22,6 +22,9 @@ class ProviderSnapshot:
         self.api = None
         self.api_error = None
         self.local = LocalStats()
+        # Codex has no daily window: no Daily row, and a "daily" icon metric
+        # falls back to its 5-hour limit.
+        self.has_daily = True
 
     @property
     def id(self):
@@ -32,6 +35,8 @@ class ProviderSnapshot:
         return self.name + (" · " + self.account.email if self.account.email else "")
 
     def metric_percent(self, metric):
+        if metric == "daily" and not self.has_daily:
+            metric = "session"
         if metric in ("session", "weekly"):
             limit = self.api.limit(metric) if self.api else None
             if limit:
@@ -127,6 +132,7 @@ class CodexProvider:
         if not home.is_dir():
             return []
         snap = ProviderSnapshot(self.kind, self.name, home)
+        snap.has_daily = False
         account = read_account(home)
         if account:
             snap.credential_status = "ok"

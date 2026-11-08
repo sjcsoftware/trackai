@@ -18,7 +18,7 @@ from gi.repository import Gtk, Gdk
 from trackai.providers import ProviderSnapshot
 from trackai.settings import Settings
 from trackai.state import AppState
-from trackai.stats_view import HoverCard, StatsPanel
+from trackai.stats_view import StatsPanel
 from trackai.settings_view import SettingsWindow
 from trackai.transcripts import TranscriptScanner, UsageEntry
 from trackai.usage_api import ApiUsage, LimitInfo
@@ -35,6 +35,7 @@ for kind, name, model, percent in (("claude", "Claude Code", "claude-sonnet-5", 
     data.account.email = "developer@example.invalid"
     data.subscription_type = "plus" if kind == "codex" else "pro"
     data.credential_status = "ok"
+    data.has_daily = kind != "codex"
     data.local = TranscriptScanner()._aggregate([
         UsageEntry(str(i), model, now - timedelta(days=i, minutes=10), 40000, 20000, 0, 150000)
         for i in range(4)])
@@ -46,6 +47,14 @@ for kind, name, model, percent in (("claude", "Claude Code", "claude-sonnet-5", 
     state.accounts.append(data)
 state.last_refresh = now
 panel = StatsPanel(state, lambda: None, lambda: None)
+
+
+def _labels(widget):
+    if isinstance(widget, Gtk.Label):
+        return [widget]
+    if isinstance(widget, Gtk.Container):
+        return [found for child in widget.get_children() for found in _labels(child)]
+    return []
 
 
 def render(window, name):
@@ -67,11 +76,8 @@ def render(window, name):
 
 render(panel, "linux-overview")
 assert panel.get_size()[1] < 700, "overview should fit without scrolling"
-hover = Gtk.Window(type=Gtk.WindowType.POPUP)
-hover.get_style_context().add_class("tc-root")
-hover.add(HoverCard(state))
-render(hover, "linux-hover")
-hover.destroy()
+texts = [label.get_text() for label in _labels(panel.root)]
+assert texts.count("Daily") == 1, "only Claude has a Daily row; Codex has no daily limit"
 panel.detailed = True
 panel.rebuild()
 render(panel, "linux-detailed")

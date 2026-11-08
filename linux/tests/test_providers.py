@@ -132,6 +132,13 @@ class CodexTests(unittest.TestCase):
             auth.write_text(json.dumps(obj))
             self.assertIsNone(read_account(self.home))
 
+    def test_codex_snapshot_has_no_daily_window(self):
+        settings = Settings().snapshot()
+        settings._values["codexHome"] = str(self.home)
+        data = CodexProvider().scan(settings)[0]
+        self.assertFalse(data.has_daily)
+        self.assertTrue(ProviderSnapshot("claude", "Claude Code", "/c").has_daily)
+
     def test_codex_is_offline_and_labels_stale_limits(self):
         self.write("a.jsonl", [event("event_msg", {"rate_limits": {"secondary": {"used_percent": 20}}}, NOW - timedelta(hours=7))])
         settings = Settings().snapshot()
@@ -240,6 +247,10 @@ class ProviderStateTests(unittest.TestCase):
         settings._values["colorMetric"] = "daily"
         self.assertIsNone(state.icon_percent())
         self.assertEqual(state.icon_kind(), "codex")
+        # Codex has no daily window, so a daily metric reads its 5h limit.
+        state.accounts[1].has_daily = False
+        self.assertEqual(state.icon_percent(), 80)
+        state.accounts[1].has_daily = True
         settings._values["iconMode"] = "highest"
         self.assertIsNone(state.icon_kind())
 

@@ -1,72 +1,10 @@
-"""Hover summary text, panel placement and SNI icon pixels; no display needed."""
+"""Panel placement and SNI icon pixels; no display needed."""
 from pathlib import Path
 import sys
 import unittest
-from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from trackai import summary                       # noqa: E402
 from trackai.placement import GAP, MARGIN, place  # noqa: E402
-from trackai.providers import ProviderSnapshot    # noqa: E402
-from trackai.settings import Settings             # noqa: E402
-from trackai.usage_api import ApiUsage, LimitInfo  # noqa: E402
-
-NOW = datetime.now(timezone.utc)
-
-
-def snapshot(kind="claude", name="Claude Code", session=None, weekly=None, error=None,
-             status="ok", fetched=NOW):
-    data = ProviderSnapshot(kind, name, "/fixture/" + kind)
-    data.credential_status = status
-    limits = []
-    if session is not None:
-        limits.append(LimitInfo("session", "session", session, NOW + timedelta(hours=1, minutes=30)))
-    if weekly is not None:
-        limits.append(LimitInfo("weekly", "weekly", weekly, NOW + timedelta(days=2)))
-    if limits:
-        data.api = ApiUsage(limits, None, fetched)
-    data.api_error = error
-    return data
-
-
-class SummaryTests(unittest.TestCase):
-    def setUp(self):
-        self.settings = Settings.__new__(Settings)
-        self.settings._values = {"warnThreshold": 50.0, "critThreshold": 80.0}
-        self.settings._listeners = []
-
-    def line(self, data):
-        return summary.provider_line(data, self.settings)
-
-    def test_both_limits_without_reset_below_warning(self):
-        self.assertEqual(self.line(snapshot(session=12, weekly=40)), "Claude Code — 5h 12% · week 40%")
-
-    def test_reset_time_appears_once_session_is_high(self):
-        text = self.line(snapshot(session=72.4, weekly=40))
-        self.assertTrue(text.startswith("Claude Code — 5h 72% (resets 1h "), text)
-        self.assertTrue(text.endswith(") · week 40%"), text)
-
-    def test_stale_codex_limits_say_how_old(self):
-        old = NOW - timedelta(hours=8)
-        data = snapshot("codex", "Codex", 10, 3, "Limits as of the last Codex run (over 6 hours old)",
-                        fetched=old)
-        self.assertTrue(self.line(data).endswith("· as of " + old.astimezone().strftime("%H:%M")))
-
-    def test_no_limits_falls_back_to_login_state_or_local_usage(self):
-        self.assertEqual(self.line(snapshot(status="expired")), "Claude Code — login expired")
-        self.assertEqual(self.line(snapshot(status="missing")), "Claude Code — not logged in")
-        self.assertEqual(self.line(snapshot()), "Claude Code — no usage yet")
-
-    def test_tooltip_has_one_line_per_provider(self):
-        title, body = summary.tooltip([snapshot(session=1, weekly=2),
-                                       snapshot("codex", "Codex", 3, 4)], self.settings)
-        self.assertEqual(title, "trackai")
-        self.assertEqual(body.splitlines(), ["Claude Code — 5h 1% · week 2%", "Codex — 5h 3% · week 4%"])
-        self.assertIn("log in", summary.tooltip([], self.settings)[1])
-
-    def test_label(self):
-        self.assertEqual(summary.label(None), "")
-        self.assertEqual(summary.label(41.6), "42%")
 
 
 class PlacementTests(unittest.TestCase):

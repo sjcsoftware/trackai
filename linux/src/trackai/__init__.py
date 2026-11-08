@@ -4,5 +4,5 @@ Linux port of https://github.com/sjcsoftware/trackai (macOS, Swift).
 Pure standard library for everything except the GTK 3 user interface.
 """
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 __all__ = ["__version__"]

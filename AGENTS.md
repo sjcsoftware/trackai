@@ -31,7 +31,7 @@ linux/src/trackai/           GTK app, provider registry, scanners, settings
 linux/src/trackai/provider_mark.py  same outlines drawn with cairo
 linux/src/trackai/sni.py      StatusNotifierItem served over Gio D-Bus (no libappindicator)
 linux/src/trackai/popup.py    override-redirect panel + seat grab; x11.py finds the bar rect
-linux/src/trackai/style.py    palette/CSS from the GTK theme accent; summary.py hover text
+linux/src/trackai/style.py    palette/CSS from the GTK theme accent
 linux/bin/trackai             Linux CLI (separate from signed Mac bundle)
 linux/scripts/build.sh        tests + reproducible Linux source archive
 linux/scripts/smoke-ui.py     GTK checks and screenshots using synthetic data
@@ -119,11 +119,14 @@ only if Google exposes a quota endpoint that a consumer token can actually call.
 
 7. **Linux serves its own StatusNotifierItem.** libappindicator marks items
    menu-only, so hosts open a menu on click; ours sets `ItemIsMenu=false` and
-   handles `Activate(x, y)` by opening the panel there. Hover text goes in both
-   `Title` (eww and similar hosts show only that) and `ToolTip`. Re-register
+   handles `Activate(x, y)` by opening the panel there. There is no hover:
+   `Title` and `ToolTip` stay empty (hosts render them as tooltips, and they
+   could not keep up with live numbers). Re-register
    whenever `org.kde.StatusNotifierWatcher` reappears (bars restart). With no
-   watcher on X11, fall back to `Gtk.StatusIcon` (XEmbed), whose tooltip is the
-   `HoverCard` widget.
+   watcher on X11, fall back to `Gtk.StatusIcon` (XEmbed), also without a
+   tooltip.
+9. **Codex has no daily limit.** Its snapshots set `has_daily = False`: no
+   Daily row in the panel, and the "daily" icon metric reads its 5h limit.
 8. **The panel is an override-redirect popup on X11** with a pointer+keyboard
    seat grab: only Escape or an outside click closes it. Placement uses the
    rect of the top-level window under the click (the bar), because i3 and many

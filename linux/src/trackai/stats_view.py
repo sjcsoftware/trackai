@@ -1,10 +1,7 @@
-"""The stats panel and the hover card (port of PanelView/ProviderBoxes.swift).
+"""The stats panel (port of PanelView/ProviderBoxes.swift).
 
 The panel has the macOS layout: a header with the aggregate icon, one card
-per provider, and a footer with the Overview/Detailed switch. The hover card
-is the overview cut down to the two plan limits per provider; it is used as
-the tooltip of the XEmbed tray icon (StatusNotifierItem hosts render their
-own text tooltip from ``summary``).
+per provider, and a footer with the Overview/Detailed switch.
 """
 
 from __future__ import annotations
@@ -31,7 +28,6 @@ except ImportError:
     cairo = None
 
 PANEL_WIDTH = 340
-HOVER_WIDTH = 248
 OVERVIEW_MAX_HEIGHT = 440
 DETAILED_MAX_HEIGHT = 540
 
@@ -229,7 +225,9 @@ def overview_card(data, settings):
         status = _status_text(data)
         card.put(PlaceholderRow("Session (5h)", "—", status or data.api_error or "no session data yet"))
 
-    if local.has_daily_baseline:
+    if not data.has_daily:
+        pass
+    elif local.has_daily_baseline:
         card.put(BarRow("Daily", local.daily_relative_percent,
                         "{} · {}".format(Formatting.tokens(local.today.total), Formatting.usd(local.today.cost)),
                         "vs. busiest day in 30 days", settings))
@@ -276,7 +274,7 @@ def detailed_card(data, settings):
 
     card.put(_separator())
     card.put(_label("TOKEN USAGE (LOCAL)", "tc-caption"))
-    if local.has_daily_baseline:
+    if data.has_daily and local.has_daily_baseline:
         card.put(BarRow("Today", local.daily_relative_percent,
                         "{} · {}{}".format(Formatting.tokens(local.today.total), cost_prefix,
                                            Formatting.usd(local.today.cost)),
@@ -311,50 +309,6 @@ def detailed_card(data, settings):
             foot.pack_end(_label(data.rate_limit_tier, "tc-sub", xalign=1.0), False, False, 0)
         card.put(foot)
     return card
-
-
-class HoverCard(Gtk.Box):
-    """The overview cut to its essentials: each provider's 5h and weekly limit."""
-
-    def __init__(self, state):
-        Gtk.Box.__init__(self, orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        style.install_css()
-        self.get_style_context().add_class("tc-hover")
-        self.set_size_request(HOVER_WIDTH, -1)
-        self.set_border_width(4)
-        settings = state.settings
-        if not state.accounts:
-            self.pack_start(_label("No providers yet — log in to claude or codex", "tc-note", wrap=True),
-                            False, False, 0)
-        for data in state.accounts:
-            block = _vbox(5)
-            head = _hbox(6)
-            head.pack_start(Mark(data.kind, 13), False, False, 0)
-            head.pack_start(_label(data.name, "tc-headline"), True, True, 0)
-            status = _status_text(data)
-            if status:
-                head.pack_end(_label(status, "tc-warn", xalign=1.0), False, False, 0)
-            block.pack_start(head, False, False, 0)
-            limits = [(short, data.api.limit(group)) for short, group in (("5h", "session"), ("Week", "weekly"))
-                      if data.api is not None and data.api.limit(group) is not None]
-            for short, limit in limits:
-                row = _hbox(8)
-                name = _label(short, "tc-muted")
-                name.set_size_request(30, -1)
-                row.pack_start(name, False, False, 0)
-                row.pack_start(Bar(limit.percent, 4, settings), True, True, 0)
-                row.pack_start(_percent_label(limit.percent, "tc-percent-small", settings), False, False, 0)
-                block.pack_start(row, False, False, 0)
-            if not limits:
-                today = data.local.today
-                block.pack_start(_label("Today {} · {}".format(Formatting.tokens(today.total),
-                                                               Formatting.usd(today.cost)), "tc-line"),
-                                 False, False, 0)
-            if data.api is not None and data.api_error:
-                block.pack_start(_label("as of " + Formatting.clock(data.api.fetched_at), "tc-sub"),
-                                 False, False, 0)
-            self.pack_start(block, False, False, 0)
-        self.show_all()
 
 
 class StatsPanel(PopupWindow):

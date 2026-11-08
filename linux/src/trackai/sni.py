@@ -2,12 +2,13 @@
 
 libappindicator always marks its item as menu-only, so every tray host opens a
 menu on a left click and there is no way to show our own panel. Serving the
-item ourselves lets the click reach ``Activate(x, y)`` (we open the panel at
-the icon) and lets the hover tooltip carry a short live summary.
+item ourselves lets the click reach ``Activate(x, y)``: we open the panel at
+the icon.
 
-Hosts differ in what they render on hover: eww and older hosts show ``Title``,
-KDE, waybar and the GNOME extension show ``ToolTip``. Both carry the summary.
-Only Gio is used, so there is no extra dependency.
+``Title`` and ``ToolTip`` stay empty on purpose. Hosts render them as a hover
+tooltip (eww shows ``Title``; KDE, waybar and the GNOME extension show
+``ToolTip``), and trackai has no hover. Only Gio is used, so there is no extra
+dependency.
 """
 
 from __future__ import annotations
@@ -81,14 +82,14 @@ class StatusNotifierItem(object):
     present, so the caller can fall back to an XEmbed icon when it is not.
     """
 
-    def __init__(self, item_id, title, on_activate, on_host_changed=None):
+    def __init__(self, item_id, on_activate, on_host_changed=None):
         self.on_activate = on_activate
         self.on_host_changed = on_host_changed or (lambda _available: None)
         self.registered = False
         self._values = {
             "Category": "ApplicationStatus",
             "Id": item_id,
-            "Title": title,
+            "Title": "",
             "Status": "Active",
             "WindowId": 0,
             "IconThemePath": "",
@@ -99,7 +100,7 @@ class StatusNotifierItem(object):
             "AttentionIconName": "",
             "AttentionIconPixmap": [],
             "AttentionMovieName": "",
-            "ToolTip": ("", [], title, ""),
+            "ToolTip": ("", [], "", ""),
             "ItemIsMenu": False,
             "XAyatanaLabel": "",
             "XAyatanaLabelGuide": "",
@@ -208,22 +209,7 @@ class StatusNotifierItem(object):
         if pixmaps == self._values["IconPixmap"]:
             return
         self._values["IconPixmap"] = pixmaps
-        tip = self._values["ToolTip"]
-        self._values["ToolTip"] = (tip[0], pixmaps, tip[2], tip[3])
         self._emit("NewIcon")
-
-    def set_tooltip(self, title, text):
-        """``title`` heads the tooltip; hosts that only show Title get both."""
-        flat = title if not text else title + "\n" + text
-        changed = False
-        if self._values["Title"] != flat:
-            self._values["Title"] = flat
-            self._emit("NewTitle")
-            changed = True
-        tip = (self._values["ToolTip"][0], self._values["IconPixmap"], title, text)
-        if changed or tip != self._values["ToolTip"]:
-            self._values["ToolTip"] = tip
-            self._emit("NewToolTip")
 
     def set_label(self, label, guide=""):
         if self._values["XAyatanaLabel"] == label:

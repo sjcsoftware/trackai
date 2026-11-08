@@ -1,4 +1,4 @@
-"""Colours, type and CSS shared by the panel, the hover card and Settings.
+"""Colours, type and CSS shared by the panel and Settings.
 
 The look follows the desktop rather than a fixed brand: the accent comes from
 the GTK theme's selection colour, the glass is a dark (or light) neutral
@@ -124,8 +124,8 @@ def build_css(p):
     text = p.text
     ink = p.ink
     return """
-.tc-root, .tc-root label, .tc-hover, .tc-hover label {{ font-family: {fonts}; }}
-.tc-root label, .tc-hover label {{ color: {text}; }}
+.tc-root, .tc-root label {{ font-family: {fonts}; }}
+.tc-root label {{ color: {text}; }}
 .tc-title {{ font-size: 13px; font-weight: 700; }}
 .tc-headline {{ font-size: 12px; font-weight: 700; }}
 .tc-card {{
@@ -192,7 +192,7 @@ scrolledwindow.tc-scroll scrollbar slider {{
     background-color: {scroll};
 }}
 
-/* Tooltips this process shows (buttons, the XEmbed hover card) match the panel. */
+/* Tooltips on the panel's buttons match the panel. */
 tooltip, tooltip.background {{
     background-color: {glass_solid};
     border: 1px solid {card_edge};

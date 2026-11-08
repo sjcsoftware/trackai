@@ -46,8 +46,7 @@ The standard `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, and `XDG_CACHE_HOME` overrides 
 
 The tray icon is a StatusNotifierItem, the protocol KDE, the GNOME AppIndicator extension, waybar, eww, polybar and xfce4-panel all host. Trays without it (i3bar, stalonetray, older panels) get a classic XEmbed icon instead; if a StatusNotifierItem tray starts later, the icon moves to it.
 
-- **Hover** the icon for a short summary: each provider's 5-hour and weekly limit. It disappears when the pointer leaves the icon.
-- **Click** the icon to open the panel, then switch between **Overview** and **Detailed**. The panel stays open until you press Escape or click anywhere outside it.
+Click the icon to open the panel, then switch between **Overview** and **Detailed**. The panel stays open until you press Escape or click anywhere outside it. The icon has no hover tooltip.
 
 On X11 the panel is an override-redirect window, so tiling window managers such as i3 never tile or move it. It opens beside the bar you clicked in (below a top bar, above a bottom bar), even when the bar reserves no screen space. Its colours follow your GTK theme's accent and light or dark mode. On Wayland the compositor decides where windows go, so the panel closes when it loses focus instead.
 
@@ -65,7 +64,7 @@ On other distributions, the installer checks the same bindings and prints equiva
 
 **Detailed** shows every reported plan window, local token totals for today / five hours / seven days / 30 days / all time, a 30-day input/output/cache split and model breakdown, and the account, plan, and observation time.
 
-On Linux, hovering the tray icon shows the short summary. Additional Claude config directories appear as separate account boxes on Linux.
+Codex has no daily limit, so its box has no Daily row; when the icon follows daily usage, Codex contributes its 5-hour limit instead. Additional Claude config directories appear as separate account boxes on Linux.
 
 ## Settings
 
