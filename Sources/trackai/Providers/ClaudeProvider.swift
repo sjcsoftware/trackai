@@ -8,17 +8,10 @@ final class ClaudeProvider: UsageProvider {
     private let scanner = ClaudeTranscriptScanner()
     private var token: String?
 
-    // Anthropic rate-limits the usage endpoint per token, so polling stays
-    // conservative: at most every 5 minutes, last good result persisted across
-    // restarts, exponential back-off on HTTP 429.
-    private var cached: ApiUsage?
-    private var backoffUntil = Date.distantPast
-    private var consecutive429 = 0
-    private var lastAttempt = Date.distantPast
-    private let freshness: TimeInterval = 300
-    private let forceFloor: TimeInterval = 60
+    // Anthropic rate-limits the usage endpoint per token, so polling goes
+    // through LimitCache's freshness floors and back-off.
+    private let cache = LimitCache(persistKey: "claude.apiCache")
     private let lock = NSLock()
-    private let persistKey = "claude.apiCache"
 
     func isInstalled() -> Bool {
         FileManager.default.fileExists(atPath: ClaudeAuth.defaultConfigDir.path)
@@ -51,56 +44,26 @@ final class ClaudeProvider: UsageProvider {
 
         snap.local = scanner.scan(configDirs: dirs)
 
-        lock.lock()
-        loadPersistedIfNeeded()
-        let usage = cached
-        lock.unlock()
-        applied(usage, to: &snap)
+        applied(cache.current(), to: &snap)
         return snap
     }
 
     func fetchLimits(into snapshot: ProviderSnapshot, force: Bool,
                      completion: @escaping (ProviderSnapshot) -> Void) {
         var snap = snapshot
-        let now = Date()
+        lock.lock(); let token = self.token; lock.unlock()
 
-        lock.lock()
-        let token = self.token
-        let usage = cached
-        let inBackoff = backoffUntil > now
-        let isFresh = usage.map { now.timeIntervalSince($0.fetchedAt) < freshness } ?? false
-        // Even a manual refresh will not hammer the endpoint more than once a minute.
-        let forceAllowed = now.timeIntervalSince(lastAttempt) > forceFloor
-        let wantsFetch = force ? forceAllowed : !isFresh
-        if wantsFetch && !inBackoff && token != nil { lastAttempt = now }
-        lock.unlock()
-
-        if inBackoff && usage == nil { snap.limitsError = "rate limited — retrying soon" }
-
-        guard let token, !inBackoff, wantsFetch else { completion(snap); return }
-
-        ClaudeUsageAPI.fetch(token: token) { [weak self] result in
+        cache.refresh(token: token, force: force, fetch: ClaudeUsageAPI.fetch) { [weak self] outcome in
             guard let self else { completion(snap); return }
-            switch result {
-            case .success(let fresh):
-                self.lock.lock()
-                self.cached = fresh
-                self.backoffUntil = .distantPast
-                self.consecutive429 = 0
-                self.persist(fresh)
-                self.lock.unlock()
+            switch outcome {
+            case .notDue:
+                break
+            case .backingOff:
+                if self.cache.current() == nil { snap.limitsError = "rate limited — retrying soon" }
+            case .fetched(let fresh):
                 snap.limitsError = nil
                 self.applied(fresh, to: &snap)
-            case .failure(let err):
-                if case .rateLimited(let retryAfter) = err {
-                    self.lock.lock()
-                    self.consecutive429 += 1
-                    // 5 → 10 → 20 → 40 → 60 min, or Retry-After when it is longer.
-                    var delay = min(3600, 300 * pow(2, Double(self.consecutive429 - 1)))
-                    if let retryAfter, retryAfter > delay { delay = retryAfter }
-                    self.backoffUntil = Date().addingTimeInterval(delay)
-                    self.lock.unlock()
-                }
+            case .failed(let err):
                 if snap.limits.isEmpty { snap.limitsError = err.description }
             }
             completion(snap)
@@ -114,20 +77,6 @@ final class ClaudeProvider: UsageProvider {
         if let credits = usage.extraCreditsUSD {
             snap.planDetail = [snap.planDetail, "extra credits \(Formatting.usd(credits))"]
                 .compactMap { $0 }.joined(separator: " · ")
-        }
-    }
-
-    private func loadPersistedIfNeeded() {
-        guard cached == nil,
-              let data = UserDefaults.standard.data(forKey: persistKey),
-              let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let usage = ApiUsage.fromDict(dict) else { return }
-        cached = usage
-    }
-
-    private func persist(_ usage: ApiUsage) {
-        if let data = try? JSONSerialization.data(withJSONObject: usage.toDict()) {
-            UserDefaults.standard.set(data, forKey: persistKey)
         }
     }
 }

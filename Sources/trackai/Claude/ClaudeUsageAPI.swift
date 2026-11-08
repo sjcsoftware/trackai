@@ -1,10 +1,12 @@
 import Foundation
 
-/// Cached result of Anthropic's OAuth usage endpoint.
+/// Cached result of a provider's usage endpoint.
 struct ApiUsage {
     let limits: [LimitInfo]
     let extraCreditsUSD: Double?
     let fetchedAt: Date
+    var plan: String?
+    var tokenBased = false      // billed in AI credits, with no weekly window
 
     // Persisted so restarts keep the last good data rather than immediately
     // re-hitting an endpoint that rate-limits aggressively.
@@ -15,10 +17,13 @@ struct ApiUsage {
                 var e: [String: Any] = ["kind": l.kind, "group": l.group,
                                         "displayName": l.displayName, "percent": l.percent]
                 if let r = l.resetsAt { e["resetsAt"] = r.timeIntervalSince1970 }
+                if let detail = l.detail { e["detail"] = detail }
                 return e
             },
         ]
         if let extraCreditsUSD { d["extraCredits"] = extraCreditsUSD }
+        if let plan { d["plan"] = plan }
+        if tokenBased { d["tokenBased"] = true }
         return d
     }
 
@@ -31,11 +36,14 @@ struct ApiUsage {
                              group: (e["group"] as? String) ?? kind,
                              displayName: (e["displayName"] as? String) ?? kind,
                              percent: (e["percent"] as? Double) ?? 0,
-                             resetsAt: (e["resetsAt"] as? Double).map { Date(timeIntervalSince1970: $0) })
+                             resetsAt: (e["resetsAt"] as? Double).map { Date(timeIntervalSince1970: $0) },
+                             detail: e["detail"] as? String)
         }
         return ApiUsage(limits: limits,
                         extraCreditsUSD: d["extraCredits"] as? Double,
-                        fetchedAt: Date(timeIntervalSince1970: ts))
+                        fetchedAt: Date(timeIntervalSince1970: ts),
+                        plan: d["plan"] as? String,
+                        tokenBased: (d["tokenBased"] as? Bool) ?? false)
     }
 }
 

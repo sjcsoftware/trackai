@@ -1,6 +1,7 @@
 # trackai
 
-Claude Code + Codex usage monitor for the macOS menu bar and Linux system tray.
+Claude Code + Codex + GitHub Copilot CLI usage monitor for the macOS menu bar
+and Linux system tray.
 Swift/SwiftUI on macOS 13+ (universal); Python/GTK 3 on Linux (Ubuntu 22.04+).
 MIT, © 2026 Cha Seungjoon.
 
@@ -21,8 +22,11 @@ Sources/trackai/
                               ProviderSnapshot, UsageProvider, ProviderRegistry
     ClaudeProvider.swift      local scan + Anthropic OAuth usage endpoint
     CodexProvider.swift       local scan only (limits come from the rollout log)
+    CopilotProvider.swift     local scan + GitHub's quota endpoint, Copilot's cache as fallback
+    LimitCache.swift          freshness floors, persisted result, 429 back-off
   Claude/                     credentials, usage API, transcript scanner, pricing
   Codex/                      credentials (JWT claims), session scanner, pricing
+  Copilot/                    login/token lookup, quota API + CLI cache, session scanner
   Views/                      Components, ProviderBoxes, PanelView, SettingsView
 linux/src/trackai/           GTK app, provider registry, scanners, settings
 linux/src/trackai/provider_mark.py  same outlines drawn with cairo
@@ -43,8 +47,8 @@ dist/trackai-linux.tar.gz     Linux payload; installer selects by uname
 
 ## Invariants
 
-1. **No pasted tokens, ever.** Both providers are read from the state the CLIs
-   already keep on disk (and the Keychain for Claude). If a change would make a
+1. **No pasted tokens, ever.** Every provider is read from the state the CLIs
+   already keep on disk (and the Keychain). If a change would make a
    user copy a credential, it is the wrong change.
 2. **The app bundle embeds `bin/trackai` as `Contents/Resources/trackai-cli`,**
    and the installer takes the CLI from there when not running from a checkout.
@@ -56,14 +60,19 @@ dist/trackai-linux.tar.gz     Linux payload; installer selects by uname
    so; it must never be silently presented as live.
 4. **Claude's usage endpoint is rate-limited hard.** Keep the 5-minute freshness
    floor, the 1-minute manual-refresh floor, the persisted cache and the
-   exponential 429 back-off in `ClaudeProvider`.
+   exponential 429 back-off in `LimitCache`, which Copilot shares.
 5. **Provider scans run off-main.** Read `Settings.shared` through `onMain {}`
    from a provider, never directly. Linux captures `Settings.snapshot()` on the
    GTK thread, scans on a worker, and publishes via `GLib.idle_add`.
 6. **Adding a provider** should only mean: a `UsageProvider` conformance, a
    `ProviderKind` case, a `ProviderMark` glyph, and a `ProviderRegistry` entry.
    Nothing in the views or settings should need a per-provider branch beyond
-   copy. Keep it that way.
+   copy. Keep it that way. `ProviderKind` describes each provider
+   (`primaryLimitGroup`/`primaryName`, `tracksDailyUsage`, `costIsEstimate`,
+   `command`, `prettyModelName`), snapshots carry the per-plan `hasWeekly`, and
+   `LimitInfo.detail` holds an optional figure. `Settings` enables new kinds once
+   through the `knownProviders` marker, because `providerOrder` is only stored
+   after the user reorders.
 7. **The Mac app is ad-hoc signed, so a direct Keychain read re-prompts after
    every build.** Claude Code writes `Claude Code-credentials` with
    `/usr/bin/security add-generic-password -U`, which keeps `security` on the
@@ -73,6 +82,22 @@ dist/trackai-linux.tar.gz     Linux payload; installer selects by uname
    `SecKeychainSetUserInteractionAllowed(false)` (the file keychain ignores
    `kSecUseAuthenticationUI`) and floats `KeychainPromptHint` only while the
    real dialog is up. Linux reads files or Secret Service and has no equivalent.
+12. **Copilot has only a monthly allowance.** `primaryLimitGroup` is `"monthly"`
+    and it has no daily window, so the overview leads with it and the "session"
+    and "daily" metrics read it (Codex's "daily" reads its 5h limit the same way).
+    Token-based (AI credit) plans also set `hasWeekly = false`: no local Weekly
+    row, and "weekly" reads the monthly limit. Premium-request plans, or an
+    unknown plan, keep the local Weekly row. The quota comes from
+    `GET {api}/copilot_internal/user` with the token Copilot CLI already stores
+    (never pasted, never written), through `LimitCache`. Copilot's own
+    `~/Library/Caches/copilot/copilot-user-cache.json` (Linux:
+    `~/.cache/copilot/`) is only a labelled fallback ("Limits as of Copilot's
+    last start"), never presented as live.
+13. **Copilot's Keychain item never prompts.** Unlike Claude's, the `copilot-cli`
+    item's ACL names only Copilot's own binaries, so `/usr/bin/security` is not
+    trusted and a read through it raises a dialog on every poll. `CopilotAuth`
+    reads the item with interaction off and otherwise falls through to
+    `gh auth token`, then the labelled cache. Do not turn that read interactive.
 
 ## Data formats relied on
 
@@ -93,6 +118,17 @@ subsequent records. `payload.rate_limits.{primary,secondary}` carry
 `used_percent`, `window_minutes` and `resets_at` (epoch seconds); the newest such
 block across all sessions wins. Codex's `input_tokens` includes
 `cached_input_tokens`, and `output_tokens` includes `reasoning_output_tokens`.
+
+Copilot CLI session logs (`$COPILOT_HOME/session-state/<id>/events.jsonl`):
+one `session.usage_record` per model call with `data.usage.{model,
+inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, accounting.usageId,
+copilotUsage.{totalNanoAiu, tokenDetails[]}}`. `inputTokens` includes cache
+reads and writes; `tokenDetails` (`input`/`cache_read`/`cache_write`/`output`)
+is preferred. Cost is `totalNanoAiu / 1e9` AI credits at $0.01 each (`cost` is a
+premium-request multiplier, not USD). Deduped by `usageId`. `session.shutdown`
+aggregates are ignored. The quota response's `quota_snapshots` entries carry
+`percent_remaining`, `entitlement`, `credits_used` and `unlimited`; unlimited
+ones are skipped and `token_based_billing` names the premium one "AI credits".
 
 ## Antigravity
 
@@ -115,8 +151,13 @@ only if Google exposes a quota endpoint that a consumer token can actually call.
   settings window.
 - Universal binary builds for arm64 + x86_64; the app bundle launches and holds
   a status item.
-- Provider marks are the official Claude and Codex SVGs, normalised to absolute
-  M/L/C/Z commands on a 24x24 viewBox. Keep the Swift and Python copies identical.
+- Copilot on macOS: Copilot Business read live through `gh auth token` with no
+  Keychain dialog (monthly AI credits and plan). The Swift quota, CLI-cache and
+  session parsers match `linux/src/trackai/copilot.py` by value on shared
+  fixtures, and on real session logs.
+- Provider marks are the official Claude and Codex SVGs and Primer Octicons'
+  `copilot-24`, normalised to absolute M/L/C/Z commands on a 24x24 viewBox. Keep
+  the Swift and Python copies identical.
 - Command Line Tools whose default SDK is macOS 27 lack the SwiftUI `@State`
   macro plugin, so the build fails. Build against the 26.x SDK:
   `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk ./scripts/build.sh <version>`.

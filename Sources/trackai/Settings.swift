@@ -14,7 +14,7 @@ enum UsageMetric: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .daily: return "Daily usage"
         case .weekly: return "Weekly limit"
-        case .session: return "Session (5h) limit"
+        case .session: return "Session (5h) limit · Copilot: monthly"
         }
     }
 
@@ -107,19 +107,27 @@ final class Settings: ObservableObject {
         // Append any provider added by a later version so nothing silently vanishes.
         providerOrder = storedOrder + ProviderKind.defaultOrder.filter { !storedOrder.contains($0) }
 
-        if let stored = d.stringArray(forKey: "enabledProviders") {
-            enabledProviders = Set(stored.compactMap(ProviderKind.init(rawValue:)))
-        } else {
-            enabledProviders = Set(ProviderKind.allCases)
+        // Providers added since these settings were saved start out enabled.
+        // `providerOrder` cannot say which ones are new: it is only stored once
+        // the user reorders. Versions before this marker knew Claude and Codex.
+        let defaults = d
+        let known = defaults.stringArray(forKey: "knownProviders")?.compactMap(ProviderKind.init(rawValue:))
+            ?? [.claude, .codex]
+        let added = ProviderKind.allCases.filter { !known.contains($0) }
+        defaults.set(ProviderKind.allCases.map(\.rawValue), forKey: "knownProviders")
+
+        func storedSelection(_ key: String) -> Set<ProviderKind> {
+            guard let stored = defaults.stringArray(forKey: key) else { return Set(ProviderKind.allCases) }
+            let selection = Set(stored.compactMap(ProviderKind.init(rawValue:))).union(added)
+            if !added.isEmpty { defaults.set(selection.map(\.rawValue).sorted(), forKey: key) }
+            return selection
         }
+
+        enabledProviders = storedSelection("enabledProviders")
 
         menuBarMode = MenuBarMode(rawValue: d.string(forKey: "menuBarMode") ?? "") ?? .average
         menuBarMetric = UsageMetric(rawValue: d.string(forKey: "menuBarMetric") ?? "") ?? .daily
-        if let stored = d.stringArray(forKey: "menuBarProviders") {
-            menuBarProviders = Set(stored.compactMap(ProviderKind.init(rawValue:)))
-        } else {
-            menuBarProviders = Set(ProviderKind.allCases)
-        }
+        menuBarProviders = storedSelection("menuBarProviders")
         menuBarSingleProvider = ProviderKind(rawValue: d.string(forKey: "menuBarSingleProvider") ?? "") ?? .claude
         showPercentInMenuBar = d.object(forKey: "showPercentInMenuBar") as? Bool ?? true
 

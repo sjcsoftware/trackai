@@ -2,18 +2,21 @@ import SwiftUI
 
 /// Overview: the three headline numbers for one provider, in the order the
 /// windows actually tighten — the rolling session first, then today, then the week.
-/// Providers without a daily window (Codex) skip the middle row.
+/// Providers without a daily window (Codex, Copilot) skip the middle row, and
+/// plans with no weekly window (Copilot's AI-credit plans) skip the last.
 struct OverviewBoxView: View {
     let snapshot: ProviderSnapshot
 
     var body: some View {
         ProviderBox(snapshot: snapshot) {
             if let local = snapshot.local, snapshot.status != .notInstalled {
-                sessionRow
+                primaryRow
                 if snapshot.kind.tracksDailyUsage {
                     dailyRow(local)
                 }
-                weeklyRow(local)
+                if snapshot.weeklyIsFromPlan || snapshot.hasWeekly {
+                    weeklyRow(local)
+                }
             } else {
                 Text(emptyMessage)
                     .font(.system(size: 11))
@@ -24,31 +27,33 @@ struct OverviewBoxView: View {
     }
 
     @ViewBuilder
-    private var sessionRow: some View {
-        if let session = snapshot.sessionLimit {
-            BarRow(name: session.displayName,
-                   percent: session.percent,
-                   subtitle: Formatting.resetsIn(session.resetsAt),
+    private var primaryRow: some View {
+        if let primary = snapshot.primaryLimit {
+            BarRow(name: primary.displayName,
+                   percent: primary.percent,
+                   valueText: primary.detail,
+                   subtitle: Formatting.resetsIn(primary.resetsAt),
                    emphasised: true)
         } else {
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
-                    Text("Session (5h)").font(.system(size: 12, weight: .semibold))
+                    Text(snapshot.kind.primaryName).font(.system(size: 12, weight: .semibold))
                     Spacer()
                     Text("—").font(.system(size: 12, weight: .semibold, design: .rounded))
                         .foregroundStyle(.tertiary)
                 }
-                Text(sessionPlaceholder)
+                Text(primaryPlaceholder)
                     .font(.system(size: 9.5)).foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
 
-    private var sessionPlaceholder: String {
+    private var primaryPlaceholder: String {
         switch snapshot.status {
-        case .ok: return snapshot.limitsError ?? "no session data yet"
+        case .ok: return snapshot.limitsError ?? "no limit data yet"
         case .expired: return "login expired"
-        case .missing: return "not logged in"
+        case .missing: return snapshot.limitsError ?? "not logged in"
         case .notInstalled: return "not installed"
         }
     }
@@ -92,9 +97,7 @@ struct OverviewBoxView: View {
     private var emptyMessage: String {
         switch snapshot.status {
         case .notInstalled:
-            return snapshot.kind == .claude
-                ? "Claude Code isn't installed. Run `claude` once and it will appear here."
-                : "Codex isn't installed. Run `codex` once and it will appear here."
+            return "\(snapshot.kind.displayName) isn't installed. Run `\(snapshot.kind.command)` once and it will appear here."
         case .missing:
             return "Not logged in yet — no usage recorded."
         default:
@@ -134,6 +137,7 @@ struct DetailBoxView: View {
             ForEach(snapshot.limits) { limit in
                 BarRow(name: limit.displayName,
                        percent: limit.percent,
+                       valueText: limit.detail,
                        subtitle: Formatting.resetsIn(limit.resetsAt))
             }
             if let note = snapshot.limitsError {
@@ -152,13 +156,9 @@ struct DetailBoxView: View {
         switch snapshot.status {
         case .ok: return "Loading…"
         case .expired:
-            return snapshot.kind == .claude
-                ? "Login expired — run `claude` in a terminal to refresh."
-                : "Login expired — run `codex` in a terminal to refresh."
+            return "Login expired — run `\(snapshot.kind.command)` in a terminal to refresh."
         case .missing:
-            return snapshot.kind == .claude
-                ? "Not logged in — run `claude` in a terminal."
-                : "Not logged in — run `codex` in a terminal."
+            return "Not logged in — run `\(snapshot.kind.command)` in a terminal."
         case .notInstalled: return "Not installed."
         }
     }
@@ -194,8 +194,7 @@ struct DetailBoxView: View {
         "30d: in \(Formatting.tokens(t.input)) · out \(Formatting.tokens(t.output)) · cache \(Formatting.tokens(t.cacheCreate + t.cacheRead))"
     }
 
-    /// Codex costs are notional for subscription users, so they are marked "est.".
-    private var costPrefix: String { snapshot.kind == .codex ? "est. " : "" }
+    private var costPrefix: String { snapshot.kind.costIsEstimate ? "est. " : "" }
 
     // MARK: Per-model
 
@@ -206,18 +205,11 @@ struct DetailBoxView: View {
         // dominant model never looks like a warning.
         let total = max(1, local.last30d.total)
         ForEach(local.perModel30d.prefix(5)) { m in
-            BarRow(name: prettyModel(m.model),
+            BarRow(name: snapshot.kind.prettyModelName(m.model),
                    percent: Double(m.totals.total) / Double(total) * 100,
                    valueText: "\(Formatting.tokens(m.totals.total))",
                    subtitle: "in \(Formatting.tokens(m.totals.input)) · out \(Formatting.tokens(m.totals.output)) · cache \(Formatting.tokens(m.totals.cacheCreate + m.totals.cacheRead))",
                    tint: .accentColor)
-        }
-    }
-
-    private func prettyModel(_ model: String) -> String {
-        switch snapshot.kind {
-        case .claude: return ClaudePricing.prettyModelName(model)
-        case .codex: return CodexPricing.prettyModelName(model)
         }
     }
 

@@ -75,7 +75,7 @@ struct PanelView: View {
                 .padding(.horizontal, 14)
                 .padding(.bottom, 2)
             }
-            .frame(maxHeight: state.page == .overview ? 420 : 520)
+            .frame(maxHeight: 600)      // three provider boxes without scrolling
         }
     }
 

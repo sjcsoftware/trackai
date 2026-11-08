@@ -106,9 +106,9 @@ struct SettingsView: View {
     private var menuBarExplanation: String {
         let metric: String
         switch settings.menuBarMetric {
-        case .daily: metric = "today's tokens measured against your busiest day in the last 30"
-        case .weekly: metric = "your plan's weekly window (local 7-day usage when a provider has no weekly limit)"
-        case .session: metric = "your plan's rolling 5-hour window"
+        case .daily: metric = "today's tokens measured against your busiest day in the last 30 (Codex and Copilot have no daily limit, so they use their 5-hour or monthly limit)"
+        case .weekly: metric = "your plan's weekly window (local 7-day usage when a provider has no weekly limit; Copilot's AI-credit plans use their monthly limit)"
+        case .session: metric = "your plan's rolling 5-hour window (Copilot: its monthly limit)"
         }
         switch settings.menuBarMode {
         case .average: return "The icon shows the average across the ticked providers of \(metric)."

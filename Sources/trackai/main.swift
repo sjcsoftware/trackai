@@ -39,6 +39,7 @@ func gatherCLI() -> [[String: Any]] {
             var d: [String: Any] = ["kind": l.kind, "group": l.group,
                                     "name": l.displayName, "percent": l.percent]
             if let r = l.resetsAt { d["resetsAt"] = ISODate.string(r) }
+            if let detail = l.detail { d["detail"] = detail }
             return d
         }
         if let err = snapshot.limitsError { entry["limitsNote"] = err }
@@ -104,13 +105,13 @@ if arguments.contains("--setup") {
         exit(0)
     }
     print("No usable login found yet.")
-    print("Open a terminal and run `claude` and/or `codex`, log in, then run `trackai setup` again.")
+    print("Open a terminal and run \(ProviderKind.commandsHint("and/or")), log in, then run `trackai setup` again.")
     exit(1)
 }
 
 if arguments.contains("--help") || arguments.contains("-h") {
     print("""
-    trackai — Claude Code and Codex usage in your Mac menu bar.
+    trackai — Claude Code, Codex and Copilot usage in your Mac menu bar.
 
       trackai            launch the menu bar app
       trackai --setup    check which providers are connected

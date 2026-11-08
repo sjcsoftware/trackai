@@ -75,7 +75,8 @@ from the branch:
 ## Adding a provider
 
 - **macOS:** implement `UsageProvider`, add a `ProviderKind` case and a
-  `ProviderMark` glyph, and register it in `ProviderRegistry.all`.
+  `ProviderMark` glyph, and register it in `ProviderRegistry.all`. Existing
+  settings pick up new kinds automatically through `knownProviders`.
 - **Linux:** implement a provider that returns `ProviderSnapshot` objects, add
   it to `PROVIDERS` in `linux/src/trackai/providers.py`, add its outline to
   `linux/src/trackai/provider_mark.py`, and include its key in the settings
@@ -86,11 +87,12 @@ branch.
 
 ## Data sources
 
-| | Claude Code | Codex |
-| --- | --- | --- |
-| Login | `~/.claude/.credentials.json`, Keychain (macOS, via `security`) or `secret-tool` (Linux) | `~/.codex/auth.json` |
-| Tokens | `~/.claude/projects/**/*.jsonl` | `~/.codex/sessions/**/*.jsonl` |
-| Plan limits | Anthropic's OAuth usage endpoint (5-minute floor, 429 back-off) | `rate_limits` snapshots in the rollout logs (no network) |
+| | Claude Code | Codex | Copilot |
+| --- | --- | --- | --- |
+| Login | `~/.claude/.credentials.json`, Keychain (macOS, via `security`) or `secret-tool` (Linux) | `~/.codex/auth.json` | `lastLoggedInUser` in `~/.copilot/config.json`; token from `COPILOT_GITHUB_TOKEN`, the config's plaintext fallback, the Keychain without a prompt (macOS) or Secret Service (Linux), or `gh auth token` |
+| Tokens | `~/.claude/projects/**/*.jsonl` | `~/.codex/sessions/**/*.jsonl` | `session.usage_record` events in `~/.copilot/session-state/*/events.jsonl` |
+| Plan limits | Anthropic's OAuth usage endpoint (5-minute floor, 429 back-off) | `rate_limits` snapshots in the rollout logs (no network) | GitHub's `copilot_internal/user` (same floors and back-off; falls back to Copilot's own cache, labelled) |
 
-`CLAUDE_CONFIG_DIR` and `CODEX_HOME` are respected. Costs use API prices and
-are estimates.
+`CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `COPILOT_HOME` are respected. Claude and
+Codex costs use API prices and are estimates; Copilot costs are the AI credits
+it logs per request ($0.01 each).

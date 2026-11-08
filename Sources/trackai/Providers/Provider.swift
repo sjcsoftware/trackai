@@ -138,13 +138,15 @@ enum UsageAggregator {
 
 // MARK: - Plan limits
 
-/// A server-reported quota window (Claude's 5h/weekly limits, Codex's rate limits).
+/// A server-reported quota window (Claude's 5h/weekly limits, Codex's rate
+/// limits, Copilot's monthly allowance).
 struct LimitInfo: Identifiable, Equatable {
     let kind: String        // stable id, e.g. "session", "weekly_all"
-    let group: String       // "session" | "weekly" | other
+    let group: String       // "session" | "weekly" | "monthly" | other
     let displayName: String
     let percent: Double     // 0-100 used
     let resetsAt: Date?
+    var detail: String?     // optional figure such as "525 / 11,000"
 
     var id: String { kind }
 }
@@ -160,9 +162,12 @@ struct ProviderSnapshot {
     var limitsFetchedAt: Date?
     var limitsError: String?
     var local: LocalStats?
+    /// False when the plan has no weekly window at all: no Weekly row, and the
+    /// "weekly" metric reads the primary limit.
+    var hasWeekly = true
 
-    /// Server-reported session (5h) window, if the provider has one.
-    var sessionLimit: LimitInfo? { limits.first { $0.group == "session" } }
+    /// The limit the overview leads with and the "session" metric reads.
+    var primaryLimit: LimitInfo? { limits.first { $0.group == kind.primaryLimitGroup } }
     /// Server-reported weekly window, if the provider has one.
     var weeklyLimit: LimitInfo? { limits.first { $0.group == "weekly" } }
 
@@ -183,10 +188,13 @@ struct ProviderSnapshot {
     var weeklyIsFromPlan: Bool { weeklyLimit != nil }
 
     func percent(for metric: UsageMetric) -> Double? {
+        if (metric == .daily && !kind.tracksDailyUsage) || (metric == .weekly && !hasWeekly) {
+            return primaryLimit?.percent
+        }
         switch metric {
         case .daily: return dailyPercent
         case .weekly: return weeklyPercent
-        case .session: return sessionLimit?.percent
+        case .session: return primaryLimit?.percent
         }
     }
 }
@@ -212,6 +220,7 @@ enum ConfigStatus: Equatable {
 enum ProviderKind: String, CaseIterable, Identifiable, Codable {
     case claude
     case codex
+    case copilot
 
     var id: String { rawValue }
 
@@ -219,20 +228,43 @@ enum ProviderKind: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .claude: return "Claude Code"
         case .codex: return "Codex"
+        case .copilot: return "Copilot"
         }
     }
 
+    /// The terminal command that signs in to this tool.
+    var command: String { rawValue }
+
     /// Whether a "Daily" usage row makes sense. Codex plans have only 5h and
-    /// weekly windows, so a daily bar there would suggest a limit that does not exist.
-    var tracksDailyUsage: Bool {
+    /// weekly windows and Copilot a monthly allowance, so a daily bar there
+    /// would suggest a limit that does not exist.
+    var tracksDailyUsage: Bool { self == .claude }
+
+    /// Codex costs are notional for subscription users, so they are marked "est.".
+    var costIsEstimate: Bool { self == .codex }
+
+    /// The limit group the overview leads with and the "session" metric reads.
+    var primaryLimitGroup: String { self == .copilot ? "monthly" : "session" }
+    var primaryName: String { self == .copilot ? "Monthly" : "Session (5h)" }
+
+    func prettyModelName(_ model: String) -> String {
         switch self {
-        case .claude: return true
-        case .codex: return false
+        case .claude: return ClaudePricing.prettyModelName(model)
+        case .codex: return CodexPricing.prettyModelName(model)
+        case .copilot:
+            return model.hasPrefix("gpt-") ? CodexPricing.prettyModelName(model)
+                                           : ClaudePricing.prettyModelName(model)
         }
     }
 
     /// Order the boxes appear in before the user reorders them.
-    static var defaultOrder: [ProviderKind] { [.claude, .codex] }
+    static var defaultOrder: [ProviderKind] { [.claude, .codex, .copilot] }
+
+    /// "`claude`, `codex` or `copilot`" for setup and empty-state copy.
+    static func commandsHint(_ joiner: String = "or") -> String {
+        let names = allCases.map { "`\($0.command)`" }
+        return names.dropLast().joined(separator: ", ") + " \(joiner) " + names[names.count - 1]
+    }
 }
 
 /// A source of usage for one CLI agent. Scanning happens off the main thread.
@@ -257,7 +289,7 @@ extension UsageProvider {
 }
 
 enum ProviderRegistry {
-    static let all: [UsageProvider] = [ClaudeProvider(), CodexProvider()]
+    static let all: [UsageProvider] = [ClaudeProvider(), CodexProvider(), CopilotProvider()]
 
     static func provider(for kind: ProviderKind) -> UsageProvider? {
         all.first { $0.kind == kind }
