@@ -167,11 +167,13 @@ only if Google exposes a quota endpoint that a consumer token can actually call.
    rect of the top-level window under the click (the bar), because i3 and many
    bars set no `_NET_WORKAREA`/struts. Wayland keeps an undecorated top-level.
    Never style per desktop: colours come from the GTK theme accent.
-10. **Codex has no daily limit.** Its snapshots set `has_daily = False`: no
-    Daily row in the panel, and the "daily" icon metric reads its 5h limit.
+10. **Codex and Copilot have no daily limit.** Their snapshots set
+    `has_daily = False`: no Daily row in the panel (never synthesise one from
+    local history), and the "daily" icon metric reads the primary limit
+    (Codex 5h, Copilot monthly).
 12. **Copilot (Linux only for now) has only a monthly allowance.** Its
-    snapshots set `primary_limit = "monthly"`, so the overview leads with it and
-    the "session" icon metric reads it. The quota comes from
+    snapshots set `primary_limit = "monthly"` and `has_daily = False`, so the
+    overview leads with it and the "session" and "daily" icon metrics read it. The quota comes from
     `GET {api}/copilot_internal/user` with the token Copilot CLI already stores
     (never pasted, never written), through `LimitCache(prefix="copilot")` with
     Claude's floors and back-off. Copilot's own

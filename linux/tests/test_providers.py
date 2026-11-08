@@ -244,6 +244,9 @@ class CopilotTests(unittest.TestCase):
         self.assertIsNone(data.api_error)
         self.assertAlmostEqual(data.metric_percent("session"), 4.7)
         self.assertEqual(data.primary_limit, "monthly")
+        # Copilot has no daily allowance: no Daily row, and "daily" reads the monthly limit.
+        self.assertFalse(data.has_daily)
+        self.assertAlmostEqual(data.metric_percent("daily"), 4.7)
         self.assertEqual(data.local.all_time.messages, 1)
         cached = provider.scan(Settings().snapshot())[0]
         self.assertEqual(self.calls, ["https://github.com"])

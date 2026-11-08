@@ -24,8 +24,8 @@ class ProviderSnapshot:
         self.api = None
         self.api_error = None
         self.local = LocalStats()
-        # Codex has no daily window: no Daily row, and a "daily" icon metric
-        # falls back to its 5-hour limit.
+        # Providers without a daily allowance (Codex, Copilot) get no Daily
+        # row, and a "daily" icon metric falls back to their primary limit.
         self.has_daily = True
         # The limit group the overview and the "session" metric show.
         self.primary_limit, self.primary_name = "session", "Session (5h)"
@@ -172,6 +172,7 @@ class CopilotProvider:
             return []
         snap = ProviderSnapshot(self.kind, self.name, home, command=self.command)
         snap.primary_limit, snap.primary_name = "monthly", "Monthly"
+        snap.has_daily = False
         login = copilot.read_login(home)
         if login:
             snap.account.email = login.login

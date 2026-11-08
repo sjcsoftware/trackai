@@ -90,7 +90,7 @@ trackai update
 In **Settings** you can:
 
 - turn Claude Code, Codex or Copilot on and off, and change their order
-- choose what the icon follows: the session (Copilot: monthly), weekly, or daily usage of one provider, or the average or highest across them
+- choose what the icon follows: the session (Copilot: monthly), weekly, or daily usage of one provider (Codex and Copilot have no daily limit, so daily uses their 5-hour or monthly limit), or the average or highest across them
 - set when the icon turns orange and red (50% and 80% by default)
 - adjust the panel's transparency, the refresh interval, and launch at login
 - add a second Claude account by pointing trackai at its config folder
