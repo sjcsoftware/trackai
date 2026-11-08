@@ -4,7 +4,7 @@ import json
 import sys
 from datetime import timezone
 from . import __version__
-from .providers import PROVIDERS, collect
+from .providers import PROVIDERS, collect, commands_hint
 from .settings import Settings
 
 
@@ -20,7 +20,7 @@ def serialize(data):
         "plan": data.subscription_type, "planDetail": data.rate_limit_tier,
         "limitsError": data.api_error,
         "limitsFetchedAt": iso(data.api.fetched_at) if data.api else None,
-        "limits": [{"name": l.display_name, "kind": l.kind, "percent": l.percent,
+        "limits": [{"name": l.display_name, "kind": l.kind, "percent": l.percent, "detail": l.detail,
                     "resetsAt": iso(l.resets_at)} for l in data.api.limits] if data.api else [],
         "local": {"today": local.today.to_dict(), "last5h": local.last5h.to_dict(),
                   "last7d": local.last7d.to_dict(), "last30d": local.last30d.to_dict(),
@@ -35,7 +35,7 @@ def gather_cli(offline=False):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Claude Code and Codex usage in your Linux system tray")
+    parser = argparse.ArgumentParser(description="Claude Code, Codex and Copilot usage in your Linux system tray")
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--stats", action="store_true", help="print usage as JSON; no display needed")
     modes.add_argument("--setup", action="store_true", help="check existing CLI logins")
@@ -56,7 +56,7 @@ def main(argv=None):
         if any(d.credential_status == "ok" for d in data):
             print("Connected. Run `trackai start` to open the tray app.")
             return 0
-        print("Run `claude` and/or `codex` in a terminal, log in, then run `trackai setup` again.")
+        print("Run {} in a terminal, log in, then run `trackai setup` again.".format(commands_hint("and/or")))
         return 1
     try:
         from .app import run

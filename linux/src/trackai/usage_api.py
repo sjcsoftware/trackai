@@ -1,8 +1,8 @@
 """Anthropic plan-limit lookups (port of UsageAPI.swift).
 
-The only network call trackai ever makes: a read-only GET against the
-endpoint Claude Code itself uses, authenticated with the OAuth token Claude
-Code already stores. The token is never refreshed or rewritten here.
+A read-only GET against the endpoint Claude Code itself uses, authenticated
+with the OAuth token Claude Code already stores. The token is never refreshed
+or rewritten here. (Copilot's equivalent lives in copilot.py.)
 """
 
 from __future__ import annotations
@@ -20,10 +20,11 @@ TIMEOUT = 20.0
 
 
 class LimitInfo(object):
-    __slots__ = ("kind", "group", "percent", "resets_at", "is_active", "_display_name")
+    __slots__ = ("kind", "group", "percent", "resets_at", "is_active", "_display_name", "detail")
 
-    def __init__(self, kind, group, percent, resets_at, is_active=True, display_name=None):
+    def __init__(self, kind, group, percent, resets_at, is_active=True, display_name=None, detail=None):
         self._display_name = display_name
+        self.detail = detail          # optional figure such as "525 / 11,000"
         self.kind = kind
         self.group = group
         self.percent = percent
@@ -50,12 +51,13 @@ class LimitInfo(object):
 
 
 class ApiUsage(object):
-    __slots__ = ("limits", "extra_credits_used", "fetched_at")
+    __slots__ = ("limits", "extra_credits_used", "fetched_at", "plan")
 
-    def __init__(self, limits, extra_credits_used, fetched_at):
+    def __init__(self, limits, extra_credits_used, fetched_at, plan=None):
         self.limits = limits
         self.extra_credits_used = extra_credits_used   # USD
         self.fetched_at = fetched_at
+        self.plan = plan
 
     def limit(self, group):
         # type: (str) -> "LimitInfo | None"
@@ -80,9 +82,15 @@ class ApiUsage(object):
             }
             if l.resets_at is not None:
                 entry["resetsAt"] = l.resets_at.timestamp()
+            if l._display_name:
+                entry["name"] = l._display_name
+            if l.detail:
+                entry["detail"] = l.detail
             d["limits"].append(entry)
         if self.extra_credits_used is not None:
             d["extraCreditsUsed"] = self.extra_credits_used
+        if self.plan:
+            d["plan"] = self.plan
         return d
 
     @staticmethod
@@ -106,12 +114,15 @@ class ApiUsage(object):
                 resets_at=(datetime.fromtimestamp(resets, timezone.utc)
                            if isinstance(resets, (int, float)) else None),
                 is_active=bool(e.get("isActive", True)),
+                display_name=e["name"] if isinstance(e.get("name"), str) else None,
+                detail=e["detail"] if isinstance(e.get("detail"), str) else None,
             ))
         extra = d.get("extraCreditsUsed")
         return ApiUsage(
             limits=limits,
             extra_credits_used=float(extra) if isinstance(extra, (int, float)) else None,
             fetched_at=datetime.fromtimestamp(ts, timezone.utc),
+            plan=d["plan"] if isinstance(d.get("plan"), str) else None,
         )
 
 

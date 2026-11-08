@@ -21,7 +21,7 @@ METRIC_WEEKLY = "weekly"
 
 COLOR_METRICS = [
     (METRIC_DAILY, "Daily usage (vs. 30-day peak)"),
-    (METRIC_SESSION, "Session (5h) limit"),
+    (METRIC_SESSION, "Session (5h) limit · Copilot: monthly"),
     (METRIC_WEEKLY, "Weekly limit"),
 ]
 
@@ -62,9 +62,9 @@ DEFAULTS = {
     "defaultAccountID": "",
     "extraConfigDirs": [],
     "codexHome": "",
-    "enabledProviders": ["claude", "codex"],
-    "providerOrder": ["claude", "codex"],
-    "iconProviders": ["claude", "codex"],
+    "enabledProviders": ["claude", "codex", "copilot"],
+    "providerOrder": ["claude", "codex", "copilot"],
+    "iconProviders": ["claude", "codex", "copilot"],
     "iconMode": "average",
     "refreshInterval": 120.0,
     "showPercentInMenuBar": False,
@@ -132,8 +132,7 @@ class Settings(object):
         return cls._instance
 
     def __init__(self):
-        self._values = dict(DEFAULTS)
-        self._values["extraConfigDirs"] = []
+        self._values = copy.deepcopy(DEFAULTS)
         self._listeners = []
         self.load()
 
@@ -175,6 +174,15 @@ class Settings(object):
             elif isinstance(default, str):
                 if isinstance(value, str):
                     self._values[key] = value
+        # Providers added since this file was written start out enabled.
+        order = self._values["providerOrder"]
+        for kind in DEFAULTS["providerOrder"]:
+            if kind in order:
+                continue
+            order.append(kind)
+            for key in ("enabledProviders", "iconProviders"):
+                if key in stored and kind not in self._values[key]:
+                    self._values[key].append(kind)
 
     def save(self):
         ensure_dir(CONFIG_DIR)

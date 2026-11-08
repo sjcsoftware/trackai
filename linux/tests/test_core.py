@@ -310,6 +310,18 @@ class SettingsTests(unittest.TestCase):
             fh.write("{not json")
         self.assertEqual(settings_mod.Settings().warn_threshold, 50.0)
 
+    def test_new_providers_are_added_to_stored_lists(self):
+        import importlib
+        settings_mod = importlib.import_module("trackai.settings")
+        settings_mod.ensure_dir(settings_mod.CONFIG_DIR)
+        with open(settings_mod.SETTINGS_FILE, "w", encoding="utf-8") as fh:
+            json.dump({"providerOrder": ["codex", "claude"], "enabledProviders": ["codex"]}, fh)
+        settings = settings_mod.Settings()
+        self.assertEqual(settings.provider_order, ["codex", "claude", "copilot"])
+        self.assertEqual(settings.enabled_providers, ["codex", "copilot"])
+        self.assertEqual(settings.icon_providers, ["claude", "codex", "copilot"])
+        self.assertEqual(settings_mod.DEFAULTS["providerOrder"], ["claude", "codex", "copilot"])
+
     def test_listeners(self):
         import importlib
         settings_mod = importlib.import_module("trackai.settings")

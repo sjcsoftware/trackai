@@ -2,7 +2,7 @@
 Type=Application
 Version=1.0
 Name=trackai
-GenericName=Claude Code and Codex usage monitor
+GenericName=Claude Code, Codex and Copilot usage monitor
 Comment=Track Claude Code plan limits and token usage from the system tray
 Exec=@EXEC@
 Icon=trackai

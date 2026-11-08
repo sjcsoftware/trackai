@@ -101,7 +101,7 @@ case "${1:-help}" in
         ;;
     help|--help|-h)
         cat <<'USAGE'
-trackai — Claude Code and Codex usage in your Linux system tray
+trackai — Claude Code, Codex and Copilot usage in your Linux system tray
 
   trackai setup           Check existing CLI logins and start the app
   trackai start           Start the app

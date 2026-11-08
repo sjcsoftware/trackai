@@ -249,8 +249,13 @@ echo "Now run:"
 echo ""
 echo "    $CLI_INSTALLED setup"
 echo ""
-echo "(If you haven't used Claude Code or Codex yet, open another terminal,"
-echo " run \`claude\` and/or \`codex\` and log in first — trackai picks up that login automatically.)"
+if [ "$PLATFORM" = "linux" ]; then
+    echo "(If you haven't used Claude Code, Codex or Copilot yet, open another terminal,"
+    echo " run \`claude\`, \`codex\` and/or \`copilot\` and log in first — trackai picks up that login automatically.)"
+else
+    echo "(If you haven't used Claude Code or Codex yet, open another terminal,"
+    echo " run \`claude\` and/or \`codex\` and log in first — trackai picks up that login automatically.)"
+fi
 
 if [ "$PLATFORM" = "linux" ]; then
     case "${XDG_CURRENT_DESKTOP:-}" in

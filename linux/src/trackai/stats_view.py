@@ -19,6 +19,7 @@ from . import provider_mark, status_icon, style   # noqa: E402
 from .credentials import STATUS_EXPIRED, STATUS_OK   # noqa: E402
 from .popup import PopupWindow                      # noqa: E402
 from .pricing import pretty_model_name              # noqa: E402
+from .providers import commands_hint                # noqa: E402
 from .settings import COLOR_GRAY, Settings          # noqa: E402
 from .transcripts import Formatting                 # noqa: E402
 
@@ -28,8 +29,8 @@ except ImportError:
     cairo = None
 
 PANEL_WIDTH = 340
-OVERVIEW_MAX_HEIGHT = 440
-DETAILED_MAX_HEIGHT = 540
+OVERVIEW_MAX_HEIGHT = 600   # three provider cards without scrolling
+DETAILED_MAX_HEIGHT = 600
 
 # Kept for older imports (settings_view, smoke tests).
 install_css = style.install_css
@@ -215,15 +216,15 @@ class ProviderCard(Gtk.Box):
 def overview_card(data, settings):
     card = ProviderCard(data)
     local = data.local
-    session = data.api.limit("session") if data.api else None
+    primary = data.api.limit(data.primary_limit) if data.api else None
     weekly = data.api.limit("weekly") if data.api else None
 
-    if session is not None:
-        card.put(BarRow(session.display_name, session.percent, None,
-                        Formatting.resets_in(session.resets_at), settings))
+    if primary is not None:
+        card.put(BarRow(primary.display_name, primary.percent, primary.detail,
+                        Formatting.resets_in(primary.resets_at), settings))
     else:
         status = _status_text(data)
-        card.put(PlaceholderRow("Session (5h)", "—", status or data.api_error or "no session data yet"))
+        card.put(PlaceholderRow(data.primary_name, "—", status or data.api_error or "no limit data yet"))
 
     if not data.has_daily:
         pass
@@ -253,12 +254,12 @@ def overview_card(data, settings):
 def detailed_card(data, settings):
     card = ProviderCard(data)
     local = data.local
-    cost_prefix = "est. " if data.kind == "codex" else ""
+    cost_prefix = "est. " if data.cost_is_estimate else ""
 
     card.put(_label("PLAN LIMITS", "tc-caption"))
     if data.api is not None and data.api.limits:
         for limit in data.api.limits:
-            card.put(BarRow(limit.display_name, limit.percent, None,
+            card.put(BarRow(limit.display_name, limit.percent, limit.detail,
                             Formatting.resets_in(limit.resets_at), settings, emphasised=False))
         if data.api.extra_credits_used is not None:
             card.put(_label("Extra usage credits used: " + Formatting.usd(data.api.extra_credits_used), "tc-sub"))
@@ -267,8 +268,7 @@ def detailed_card(data, settings):
             card.put(_label(data.api_error, "tc-warn", wrap=True))
     else:
         status = _status_text(data)
-        command = "claude" if data.kind == "claude" else "codex"
-        text = data.api_error or ("{} — run `{}` in a terminal".format(status.capitalize(), command)
+        text = data.api_error or ("{} — run `{}` in a terminal".format(status.capitalize(), data.command)
                                   if status else "Loading…")
         card.put(_label(text, "tc-warn" if status else "tc-note", wrap=True))
 
@@ -365,7 +365,7 @@ class StatsPanel(PopupWindow):
             empty.set_margin_top(18)
             empty.set_margin_bottom(18)
             empty.pack_start(_label("No providers yet", "tc-name", xalign=0.5), False, False, 0)
-            empty.pack_start(_label("Run `claude` or `codex` in a terminal and log in,\nthen refresh.",
+            empty.pack_start(_label("Run {} in a terminal and log in,\nthen refresh.".format(commands_hint()),
                                     "tc-sub", xalign=0.5), False, False, 0)
             body.pack_start(empty, False, False, 0)
         for data in accounts:

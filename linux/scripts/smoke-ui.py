@@ -45,6 +45,17 @@ for kind, name, model, percent in (("claude", "Claude Code", "claude-sonnet-5", 
     if kind == "codex":
         data.api_error = "Limits as of the last Codex run (over 6 hours old)"
     state.accounts.append(data)
+data = ProviderSnapshot("copilot", "Copilot", "/fixture/copilot")
+data.account.email = "octocat"
+data.subscription_type = "business"
+data.credential_status = "ok"
+data.primary_limit, data.primary_name = "monthly", "Monthly"
+data.local = TranscriptScanner()._aggregate([
+    UsageEntry(str(i), "claude-sonnet-5", now - timedelta(days=i, minutes=10), 400, 20000, 5000, 150000, 0.2)
+    for i in range(4)])
+data.api = ApiUsage([LimitInfo("monthly", "monthly", 4.7, now + timedelta(days=20),
+                               display_name="AI credits (monthly)", detail="525 / 11,000")], None, now, "business")
+state.accounts.append(data)
 state.last_refresh = now
 panel = StatsPanel(state, lambda: None, lambda: None)
 
@@ -77,7 +88,8 @@ def render(window, name):
 render(panel, "linux-overview")
 assert panel.get_size()[1] < 700, "overview should fit without scrolling"
 texts = [label.get_text() for label in _labels(panel.root)]
-assert texts.count("Daily") == 1, "only Claude has a Daily row; Codex has no daily limit"
+assert texts.count("Daily") == 2, "Claude and Copilot have a Daily row; Codex has no daily limit"
+assert "AI credits (monthly)" in texts and "525 / 11,000" in texts, "Copilot's monthly limit leads its card"
 panel.detailed = True
 panel.rebuild()
 render(panel, "linux-detailed")

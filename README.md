@@ -9,16 +9,17 @@
   <img alt="Linux" src="https://img.shields.io/badge/Linux-Ubuntu%2022.04%2B-E95420?logo=ubuntu&logoColor=white">
   <img alt="Claude Code" src="https://img.shields.io/badge/Claude%20Code-supported-D97757">
   <img alt="Codex" src="https://img.shields.io/badge/Codex-supported-black">
+  <img alt="GitHub Copilot" src="https://img.shields.io/badge/Copilot-Linux-black?logo=githubcopilot">
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue">
 </p>
 
 <p align="center">
-  <b>Claude Code and Codex usage in your menu bar.</b><br>
+  <b>Claude Code, Codex and Copilot usage in your menu bar.</b><br>
   See how much of your session and weekly limits you have left, on macOS or Linux. Nothing to paste, no account to create.
 </p>
 
 <p align="center">
-  <img src="screenshots/linux-overview.png" alt="trackai overview: session, daily and weekly usage for Claude Code and Codex" width="340">
+  <img src="screenshots/linux-overview.png" alt="trackai overview: session, monthly, daily and weekly usage for Claude Code, Codex and Copilot" width="340">
   <img src="screenshots/linux-detailed.png" alt="trackai detailed page: plan limits, token usage and model breakdown" width="340">
 </p>
 
@@ -38,10 +39,10 @@
 
 ## Features
 
-- **Both tools in one panel.** Claude Code and Codex side by side, with each plan's 5-hour and weekly limits and when they reset.
+- **All your tools in one panel.** Claude Code, Codex and GitHub Copilot CLI side by side, with each plan's 5-hour, weekly or monthly limits and when they reset. (Copilot is Linux-only for now.)
 - **Read it at a glance.** The menu bar icon fills up and turns green, orange, then red as you use your limits. Follow a single provider and it shows that provider's logo instead.
 - **Overview or detail.** **Overview** shows your limits. **Detailed** adds token counts, estimated cost, and a per-model breakdown.
-- **Nothing to set up.** trackai reads the logins Claude Code and Codex already keep on your computer.
+- **Nothing to set up.** trackai reads the logins Claude Code, Codex and Copilot already keep on your computer.
 - **Fits your desktop.** On Linux it follows your theme's colours and opens right under the tray icon, including in tiling window managers like i3.
 
 <p align="center">
@@ -52,7 +53,7 @@
 ## Requirements
 
 - **macOS 13** or later (Apple Silicon or Intel), or **Linux** with a system tray (Ubuntu 22.04 or later; tested on 24.04)
-- **Claude Code** and/or **Codex**, logged in on this computer
+- **Claude Code**, **Codex** and/or **GitHub Copilot CLI** (Linux only for now), logged in on this computer
 
 ## Install
 
@@ -70,7 +71,7 @@ trackai update
 
 ## Set up
 
-1. If you haven't yet, run `claude` and/or `codex` in a terminal and log in.
+1. If you haven't yet, run `claude`, `codex` and/or `copilot` in a terminal and log in.
 2. Run `trackai setup`. It finds your logins and starts the app.
 3. Click the trackai icon in your menu bar or system tray.
 
@@ -88,8 +89,8 @@ trackai update
 
 In **Settings** you can:
 
-- turn Claude Code or Codex on and off, and change their order
-- choose what the icon follows: the session, weekly, or daily usage of one provider, or the average or highest across them
+- turn Claude Code, Codex or Copilot on and off, and change their order
+- choose what the icon follows: the session (Copilot: monthly), weekly, or daily usage of one provider, or the average or highest across them
 - set when the icon turns orange and red (50% and 80% by default)
 - adjust the panel's transparency, the refresh interval, and launch at login
 - add a second Claude account by pointing trackai at its config folder
@@ -112,13 +113,14 @@ In **Settings** you can:
 - **`trackai: command not found`.** Add `~/.local/bin` to your `PATH`, or use the full path the installer printed.
 - **Claude shows "login expired".** Run `claude` in a terminal and log in again. Codex keeps working on its own.
 - **Codex limits look old.** They update the next time you use Codex. The panel shows when they were last seen.
+- **Copilot says "Can't read Copilot's saved login".** Run `copilot login` again. trackai reads the token Copilot keeps in your keyring (or `COPILOT_GITHUB_TOKEN`); if the keyring is locked it shows the limits Copilot cached when it last started.
 - **Anything else.** Run `trackai logs` and [open an issue](https://github.com/sjcsoftware/trackai/issues).
 
 ## Privacy
 
-- trackai reads Claude Code's and Codex's files on your computer and never uploads them.
-- Its only network request is Claude's read-only usage check, at most every five minutes. Codex makes none.
-- Costs are estimates at API prices. Subscriptions are not billed per token.
+- trackai reads Claude Code's, Codex's and Copilot's files on your computer and never uploads them.
+- Its only network requests are Claude's and Copilot's read-only usage checks (to Anthropic and GitHub), each at most every five minutes. Codex makes none.
+- Claude and Codex costs are estimates at API prices; subscriptions are not billed per token. Copilot costs are the AI credits Copilot logs for each request ($0.01 each).
 
 ## License
 

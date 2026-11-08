@@ -5,8 +5,8 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "trackai"
 dynamic = ["version"]
-description = "Claude Code and Codex usage monitor for the Linux system tray"
-readme = {text = "Claude Code and Codex usage monitor for the Linux system tray.", content-type = "text/plain"}
+description = "Claude Code, Codex and Copilot usage monitor for the Linux system tray"
+readme = {text = "Claude Code, Codex and Copilot usage monitor for the Linux system tray.", content-type = "text/plain"}
 requires-python = ">=3.8"
 license = { text = "MIT" }
 authors = [{ name = "Cha Seungjoon" }]
