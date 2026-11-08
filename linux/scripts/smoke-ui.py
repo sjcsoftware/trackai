@@ -18,7 +18,7 @@ from gi.repository import Gtk, Gdk
 from trackai.providers import ProviderSnapshot
 from trackai.settings import Settings
 from trackai.state import AppState
-from trackai.stats_view import StatsPanel
+from trackai.stats_view import HoverCard, StatsPanel
 from trackai.settings_view import SettingsWindow
 from trackai.transcripts import TranscriptScanner, UsageEntry
 from trackai.usage_api import ApiUsage, LimitInfo
@@ -49,7 +49,7 @@ panel = StatsPanel(state, lambda: None, lambda: None)
 
 
 def render(window, name):
-    window._shown_at = time.time()
+    window._shown_at = time.monotonic()
     window.show_all()
     window.present()
     deadline = time.monotonic() + 0.3
@@ -66,6 +66,12 @@ def render(window, name):
 
 
 render(panel, "linux-overview")
+assert panel.get_size()[1] < 700, "overview should fit without scrolling"
+hover = Gtk.Window(type=Gtk.WindowType.POPUP)
+hover.get_style_context().add_class("tc-root")
+hover.add(HoverCard(state))
+render(hover, "linux-hover")
+hover.destroy()
 panel.detailed = True
 panel.rebuild()
 render(panel, "linux-detailed")

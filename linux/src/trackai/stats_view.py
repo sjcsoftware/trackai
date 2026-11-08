@@ -1,328 +1,392 @@
-"""The translucent stats panel (port of StatsView.swift).
+"""The stats panel and the hover card (port of PanelView/ProviderBoxes.swift).
 
-macOS gets NSVisualEffectView blur for free; on Linux the closest honest
-equivalent is an RGBA window whose background alpha follows the transparency
-setting, with rounded corners drawn in cairo and frosted section blocks.
+The panel has the macOS layout: a header with the aggregate icon, one card
+per provider, and a footer with the Overview/Detailed switch. The hover card
+is the overview cut down to the two plan limits per provider; it is used as
+the tooltip of the XEmbed tray icon (StatusNotifierItem hosts render their
+own text tooltip from ``summary``).
 """
 
 from __future__ import annotations
 
-import math
-import time
 from datetime import datetime, timezone
 
 import gi
 
 gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
 
-from gi.repository import Gdk, Gtk, Pango   # noqa: E402
+from gi.repository import Gtk, Pango   # noqa: E402
 
-from . import provider_mark, status_icon     # noqa: E402
-from .credentials import STATUS_EXPIRED, STATUS_MISSING, STATUS_OK   # noqa: E402
-from .pricing import pretty_model_name       # noqa: E402
-from .settings import COLOR_GRAY, Settings   # noqa: E402
-from .transcripts import Formatting          # noqa: E402
+from . import provider_mark, status_icon, style   # noqa: E402
+from .credentials import STATUS_EXPIRED, STATUS_OK   # noqa: E402
+from .popup import PopupWindow                      # noqa: E402
+from .pricing import pretty_model_name              # noqa: E402
+from .settings import COLOR_GRAY, Settings          # noqa: E402
+from .transcripts import Formatting                 # noqa: E402
 
 try:
     import cairo
 except ImportError:
     cairo = None
 
-PANEL_WIDTH = 360
-PANEL_MAX_SCROLL_HEIGHT = 460
-CORNER_RADIUS = 16
-MARK_SIZE = 14
+PANEL_WIDTH = 340
+HOVER_WIDTH = 248
+OVERVIEW_MAX_HEIGHT = 440
+DETAILED_MAX_HEIGHT = 540
 
-CSS = b"""
-#tc-panel { background-color: transparent; }
-.tc-title { font-size: 13px; font-weight: bold; }
-.tc-section-title { font-size: 9px; font-weight: bold; opacity: 0.72; }
-.tc-name { font-size: 12px; font-weight: 500; }
-.tc-value { font-size: 11px; font-weight: 600; font-family: monospace; opacity: 0.78; }
-.tc-line { font-size: 11px; opacity: 0.78; }
-.tc-line-value { font-size: 11px; font-family: monospace; opacity: 0.78; }
-.tc-sub { font-size: 10px; opacity: 0.55; }
-.tc-note { font-size: 11px; opacity: 0.78; }
-.tc-warn { font-size: 11px; color: #ff9500; }
-.tc-block {
-    border-radius: 12px;
-    border: 1px solid rgba(128, 128, 128, 0.28);
-    padding: 12px;
-}
-.tc-block-dark { background-color: rgba(255, 255, 255, 0.06); }
-.tc-block-light { background-color: rgba(0, 0, 0, 0.04); }
-.tc-tab {
-    font-size: 10px;
-    border-radius: 11px;
-    padding: 2px 10px;
-    min-height: 0;
-}
-.tc-iconbutton { padding: 2px; min-width: 22px; min-height: 22px; }
-"""
-
-_css_loaded = False
+# Kept for older imports (settings_view, smoke tests).
+install_css = style.install_css
+prefers_dark = style.prefers_dark
 
 
-def install_css():
-    global _css_loaded
-    if _css_loaded:
-        return
-    screen = Gdk.Screen.get_default()
-    if screen is None:
-        return
-    provider = Gtk.CssProvider()
-    try:
-        provider.load_from_data(CSS)
-    except Exception:
-        return
-    Gtk.StyleContext.add_provider_for_screen(
-        screen, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
-    )
-    _css_loaded = True
-
-
-def prefers_dark():
-    # type: () -> bool
-    gtk_settings = Gtk.Settings.get_default()
-    if gtk_settings is None:
-        return True
-    try:
-        if gtk_settings.get_property("gtk-application-prefer-dark-theme"):
-            return True
-        theme = gtk_settings.get_property("gtk-theme-name") or ""
-    except Exception:
-        return True
-    return "dark" in theme.lower()
-
-
-def _label(text, css_class, xalign=0.0, ellipsize=False):
+def _label(text, css_class, xalign=0.0, wrap=False, ellipsize=False):
     label = Gtk.Label(label=text)
     label.set_xalign(xalign)
     label.get_style_context().add_class(css_class)
     if ellipsize:
-        label.set_ellipsize(Pango.EllipsizeMode.MIDDLE)
-        label.set_max_width_chars(28)
-    else:
+        label.set_ellipsize(Pango.EllipsizeMode.END)
+    elif wrap:
         label.set_line_wrap(True)
         label.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
+        label.set_max_width_chars(40)
+    return label
+
+
+def _hbox(spacing=6):
+    return Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=spacing)
+
+
+def _vbox(spacing=0):
+    return Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=spacing)
+
+
+def _spacer():
+    box = Gtk.Box()
+    box.set_hexpand(True)
+    return box
+
+
+def _ago(date):
+    if date is None:
+        return ""
+    secs = (datetime.now(timezone.utc) - date).total_seconds()
+    if secs < 60:
+        return "updated just now"
+    if secs < 3600:
+        return "updated {}m ago".format(int(secs // 60))
+    return "updated " + Formatting.clock(date)
+
+
+class Bar(Gtk.DrawingArea):
+    """A capsule track with a fill; usage colour unless ``tint`` is given."""
+
+    def __init__(self, percent, height, settings, tint=None):
+        Gtk.DrawingArea.__init__(self)
+        self.percent = max(0.0, float(percent or 0.0))
+        self.settings = settings
+        self.tint = tint
+        self.set_size_request(-1, height)
+        self.set_valign(Gtk.Align.CENTER)
+        self.connect("draw", self._draw)
+
+    def _draw(self, widget, cr):
+        width = widget.get_allocated_width()
+        height = widget.get_allocated_height()
+        palette = style.Palette.current()
+        ink, alpha = palette.track
+        style.rounded_rect(cr, 0, 0, width, height, height / 2.0)
+        cr.set_source_rgba(ink[0], ink[1], ink[2], alpha)
+        cr.fill()
+        if self.percent <= 0:
+            return False
+        fill = max(height, width * min(1.0, self.percent / 100.0))
+        rgb = self.tint or self.settings.usage_color(self.percent)
+        style.rounded_rect(cr, 0, 0, fill, height, height / 2.0)
+        cr.set_source_rgb(*rgb)
+        cr.fill()
+        return False
+
+
+class Mark(Gtk.DrawingArea):
+    """A provider's mark in its brand colour (Codex follows the text colour)."""
+
+    def __init__(self, kind, size):
+        Gtk.DrawingArea.__init__(self)
+        self.kind, self.size = kind, size
+        self.set_size_request(size, size)
+        self.set_valign(Gtk.Align.CENTER)
+        self.connect("draw", self._draw)
+
+    def _draw(self, _widget, cr):
+        if cairo is None:
+            return False
+        rgb = provider_mark.brand_color(self.kind, style.Palette.current().text)
+        provider_mark.draw_mark(cr, self.kind, self.size, rgb)
+        return False
+
+
+def _percent_label(percent, css_class, settings, tint=None):
+    label = _label("{:.0f}%".format(percent), css_class, xalign=1.0)
+    rgb = tint or settings.usage_color(percent)
+    # Per-label colour: CSS classes cannot carry the user's thresholds.
+    label.set_markup('<span foreground="{}">{:.0f}%</span>'.format(
+        "#{:02x}{:02x}{:02x}".format(*(int(c * 255) for c in rgb)), percent))
     return label
 
 
 class BarRow(Gtk.Box):
-    """A labelled usage bar: name, value, coloured capsule, optional subtitle."""
+    """Name, coloured percentage and optional figure, the bar, then a caption."""
 
-    def __init__(self, name, percent, value_text, subtitle=None, settings=None):
-        Gtk.Box.__init__(self, orientation=Gtk.Orientation.VERTICAL, spacing=3)
+    def __init__(self, name, percent, value_text=None, subtitle=None, settings=None,
+                 emphasised=True, tint=None):
+        Gtk.Box.__init__(self, orientation=Gtk.Orientation.VERTICAL, spacing=4)
         self.settings = settings or Settings.shared()
-        self.percent = max(0.0, float(percent))
-
-        head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        name_label = _label(name, "tc-name", ellipsize=True)
-        name_label.set_hexpand(True)
-        head.pack_start(name_label, True, True, 0)
-        head.pack_end(_label(value_text, "tc-value", xalign=1.0, ellipsize=True), False, False, 0)
+        percent = max(0.0, float(percent or 0.0))
+        head = _hbox(6)
+        head.pack_start(_label(name, "tc-name" if emphasised else "tc-name-small", ellipsize=True),
+                        True, True, 0)
+        if value_text:
+            head.pack_end(_label(value_text, "tc-value", xalign=1.0), False, False, 0)
+        head.pack_end(_percent_label(percent, "tc-percent" if emphasised else "tc-percent-small",
+                                     self.settings, tint), False, False, 0)
         self.pack_start(head, False, False, 0)
-
-        bar = Gtk.DrawingArea()
-        bar.set_size_request(-1, 6)
-        bar.connect("draw", self._draw_bar)
-        self.pack_start(bar, False, False, 0)
-
+        self.pack_start(Bar(percent, 6 if emphasised else 4, self.settings, tint), False, False, 0)
         if subtitle:
-            self.pack_start(_label(subtitle, "tc-sub"), False, False, 0)
-
-    def _draw_bar(self, widget, cr):
-        width = widget.get_allocated_width()
-        height = widget.get_allocated_height()
-        radius = height / 2.0
-        fraction = min(1.0, self.percent / 100.0)
-        fill_width = width * fraction
-
-        dark = prefers_dark()
-        track = (1.0, 1.0, 1.0, 0.14) if dark else (0.0, 0.0, 0.0, 0.09)
-        _rounded_rect(cr, 0, 0, width, height, radius)
-        cr.set_source_rgba(*track)
-        cr.fill()
-
-        rgb = self.settings.usage_color(self.percent)
-        _rounded_rect(cr, 0, 0, fill_width, height, radius)
-        cr.set_source_rgb(rgb[0], rgb[1], rgb[2])
-        cr.fill()
-        return False
+            self.pack_start(_label(subtitle, "tc-sub", ellipsize=True), False, False, 0)
 
 
-def _rounded_rect(cr, x, y, width, height, radius):
-    radius = max(0.0, min(radius, width / 2.0, height / 2.0))
-    cr.new_sub_path()
-    cr.arc(x + width - radius, y + radius, radius, -math.pi / 2, 0)
-    cr.arc(x + width - radius, y + height - radius, radius, 0, math.pi / 2)
-    cr.arc(x + radius, y + height - radius, radius, math.pi / 2, math.pi)
-    cr.arc(x + radius, y + radius, radius, math.pi, 1.5 * math.pi)
-    cr.close_path()
+class PlaceholderRow(Gtk.Box):
+    """A row with no percentage: name, a dash or figure, and a caption."""
+
+    def __init__(self, name, value, subtitle=None, emphasised=True):
+        Gtk.Box.__init__(self, orientation=Gtk.Orientation.VERTICAL, spacing=3)
+        head = _hbox(6)
+        head.pack_start(_label(name, "tc-name" if emphasised else "tc-name-small"), True, True, 0)
+        head.pack_end(_label(value, "tc-value", xalign=1.0), False, False, 0)
+        self.pack_start(head, False, False, 0)
+        if subtitle:
+            self.pack_start(_label(subtitle, "tc-sub", wrap=True), False, False, 0)
 
 
-class SectionBlock(Gtk.Box):
-    """A softly rounded frosted box grouping one section of stats."""
+def _stat_line(name, totals, cost_prefix=""):
+    row = _hbox(6)
+    row.pack_start(_label(name, "tc-line"), True, True, 0)
+    row.pack_end(_label("{} · {}{}".format(Formatting.tokens(totals.total), cost_prefix,
+                                           Formatting.usd(totals.cost)), "tc-line", xalign=1.0),
+                 False, False, 0)
+    return row
 
-    def __init__(self, title, kind=None):
-        Gtk.Box.__init__(self, orientation=Gtk.Orientation.VERTICAL, spacing=9)
-        ctx = self.get_style_context()
-        ctx.add_class("tc-block")
-        ctx.add_class("tc-block-dark" if prefers_dark() else "tc-block-light")
-        title_label = _label(title.upper(), "tc-section-title")
-        if kind is None:
-            self.pack_start(title_label, False, False, 0)
-            return
-        # Provider blocks carry the provider's mark beside the title.
-        head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        mark = Gtk.DrawingArea()
-        mark.set_size_request(MARK_SIZE, MARK_SIZE)
-        mark.set_valign(Gtk.Align.CENTER)
-        mark.connect("draw", self._draw_mark, kind)
-        head.pack_start(mark, False, False, 0)
-        title_label.set_valign(Gtk.Align.CENTER)
-        head.pack_start(title_label, True, True, 0)
+
+def _separator():
+    sep = Gtk.Box()
+    sep.get_style_context().add_class("tc-sep")
+    return sep
+
+
+def _status_text(data):
+    if data.credential_status == STATUS_EXPIRED:
+        return "login expired"
+    if data.credential_status != STATUS_OK:
+        return "not logged in"
+    return None
+
+
+class ProviderCard(Gtk.Box):
+    """The rounded card one provider's stats live in, mark in the corner."""
+
+    def __init__(self, data):
+        Gtk.Box.__init__(self, orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        self.get_style_context().add_class("tc-card")
+        head = _hbox(7)
+        head.pack_start(Mark(data.kind, 16), False, False, 0)
+        head.pack_start(_label(data.name, "tc-card-title"), False, False, 0)
+        head.pack_start(_spacer(), True, True, 0)
+        status = _status_text(data)
+        badge_text = status or (data.subscription_type or "").capitalize()
+        if badge_text:
+            badge = _label(badge_text, "tc-badge")
+            if status:
+                badge.get_style_context().add_class("tc-warn-badge")
+            badge.set_valign(Gtk.Align.CENTER)
+            head.pack_end(badge, False, False, 0)
         self.pack_start(head, False, False, 0)
 
-    @staticmethod
-    def _draw_mark(widget, cr, kind):
-        if cairo is None:
-            return False
-        fg = widget.get_style_context().get_color(widget.get_state_flags())
-        provider_mark.draw_mark(cr, kind, MARK_SIZE,
-                                provider_mark.brand_color(kind, (fg.red, fg.green, fg.blue)))
-        return False
-
-    def add_row(self, widget):
+    def put(self, widget):
         self.pack_start(widget, False, False, 0)
 
 
-class StatsPanel(Gtk.Window):
+def overview_card(data, settings):
+    card = ProviderCard(data)
+    local = data.local
+    session = data.api.limit("session") if data.api else None
+    weekly = data.api.limit("weekly") if data.api else None
+
+    if session is not None:
+        card.put(BarRow(session.display_name, session.percent, None,
+                        Formatting.resets_in(session.resets_at), settings))
+    else:
+        status = _status_text(data)
+        card.put(PlaceholderRow("Session (5h)", "—", status or data.api_error or "no session data yet"))
+
+    if local.has_daily_baseline:
+        card.put(BarRow("Daily", local.daily_relative_percent,
+                        "{} · {}".format(Formatting.tokens(local.today.total), Formatting.usd(local.today.cost)),
+                        "vs. busiest day in 30 days", settings))
+    else:
+        card.put(PlaceholderRow(
+            "Daily", "{} · {}".format(Formatting.tokens(local.today.total), Formatting.usd(local.today.cost)),
+            "building a 30-day baseline · {} active day{}".format(
+                local.active_days_30, "" if local.active_days_30 == 1 else "s")))
+
+    week_figure = "{} · {}".format(Formatting.tokens(local.last7d.total), Formatting.usd(local.last7d.cost))
+    if weekly is not None:
+        card.put(BarRow("Weekly limit", weekly.percent, week_figure,
+                        Formatting.resets_in(weekly.resets_at) or "of your plan's weekly window", settings))
+    else:
+        card.put(BarRow("Weekly", local.weekly_relative_percent, week_figure,
+                        "vs. busiest 7-day stretch", settings))
+
+    if data.api is not None and data.api_error:
+        card.put(_label(data.api_error, "tc-warn", wrap=True))
+    return card
+
+
+def detailed_card(data, settings):
+    card = ProviderCard(data)
+    local = data.local
+    cost_prefix = "est. " if data.kind == "codex" else ""
+
+    card.put(_label("PLAN LIMITS", "tc-caption"))
+    if data.api is not None and data.api.limits:
+        for limit in data.api.limits:
+            card.put(BarRow(limit.display_name, limit.percent, None,
+                            Formatting.resets_in(limit.resets_at), settings, emphasised=False))
+        if data.api.extra_credits_used is not None:
+            card.put(_label("Extra usage credits used: " + Formatting.usd(data.api.extra_credits_used), "tc-sub"))
+        card.put(_label("observed " + data.api.fetched_at.astimezone().strftime("%b %d, %H:%M"), "tc-sub"))
+        if data.api_error:
+            card.put(_label(data.api_error, "tc-warn", wrap=True))
+    else:
+        status = _status_text(data)
+        command = "claude" if data.kind == "claude" else "codex"
+        text = data.api_error or ("{} — run `{}` in a terminal".format(status.capitalize(), command)
+                                  if status else "Loading…")
+        card.put(_label(text, "tc-warn" if status else "tc-note", wrap=True))
+
+    card.put(_separator())
+    card.put(_label("TOKEN USAGE (LOCAL)", "tc-caption"))
+    if local.has_daily_baseline:
+        card.put(BarRow("Today", local.daily_relative_percent,
+                        "{} · {}{}".format(Formatting.tokens(local.today.total), cost_prefix,
+                                           Formatting.usd(local.today.cost)),
+                        "vs. busiest day in 30 days", settings, emphasised=False))
+    else:
+        card.put(_stat_line("Today", local.today, cost_prefix))
+    for name, totals in (("Last 5 hours", local.last5h), ("Last 7 days", local.last7d),
+                         ("Last 30 days", local.last30d), ("All time", local.all_time)):
+        card.put(_stat_line(name, totals, cost_prefix))
+    t = local.last30d
+    card.put(_label("30d: in {} · out {} · cache {}".format(
+        Formatting.tokens(t.input), Formatting.tokens(t.output),
+        Formatting.tokens(t.cache_create + t.cache_read)), "tc-sub"))
+
+    if local.per_model_30d:
+        card.put(_separator())
+        card.put(_label("BY MODEL · 30 DAYS", "tc-caption"))
+        top = max(1, local.last30d.total)
+        accent = style.Palette.current().accent
+        for stats in local.per_model_30d[:6]:
+            totals = stats.totals
+            card.put(BarRow(pretty_model_name(stats.model), totals.total * 100.0 / top,
+                            "{} · {}{}".format(Formatting.tokens(totals.total), cost_prefix,
+                                               Formatting.usd(totals.cost)),
+                            None, settings, emphasised=False, tint=accent))
+
+    if data.account.email or data.rate_limit_tier:
+        foot = _hbox(6)
+        if data.account.email:
+            foot.pack_start(_label(data.account.email, "tc-sub", ellipsize=True), True, True, 0)
+        if data.rate_limit_tier:
+            foot.pack_end(_label(data.rate_limit_tier, "tc-sub", xalign=1.0), False, False, 0)
+        card.put(foot)
+    return card
+
+
+class HoverCard(Gtk.Box):
+    """The overview cut to its essentials: each provider's 5h and weekly limit."""
+
+    def __init__(self, state):
+        Gtk.Box.__init__(self, orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        style.install_css()
+        self.get_style_context().add_class("tc-hover")
+        self.set_size_request(HOVER_WIDTH, -1)
+        self.set_border_width(4)
+        settings = state.settings
+        if not state.accounts:
+            self.pack_start(_label("No providers yet — log in to claude or codex", "tc-note", wrap=True),
+                            False, False, 0)
+        for data in state.accounts:
+            block = _vbox(5)
+            head = _hbox(6)
+            head.pack_start(Mark(data.kind, 13), False, False, 0)
+            head.pack_start(_label(data.name, "tc-headline"), True, True, 0)
+            status = _status_text(data)
+            if status:
+                head.pack_end(_label(status, "tc-warn", xalign=1.0), False, False, 0)
+            block.pack_start(head, False, False, 0)
+            limits = [(short, data.api.limit(group)) for short, group in (("5h", "session"), ("Week", "weekly"))
+                      if data.api is not None and data.api.limit(group) is not None]
+            for short, limit in limits:
+                row = _hbox(8)
+                name = _label(short, "tc-muted")
+                name.set_size_request(30, -1)
+                row.pack_start(name, False, False, 0)
+                row.pack_start(Bar(limit.percent, 4, settings), True, True, 0)
+                row.pack_start(_percent_label(limit.percent, "tc-percent-small", settings), False, False, 0)
+                block.pack_start(row, False, False, 0)
+            if not limits:
+                today = data.local.today
+                block.pack_start(_label("Today {} · {}".format(Formatting.tokens(today.total),
+                                                               Formatting.usd(today.cost)), "tc-line"),
+                                 False, False, 0)
+            if data.api is not None and data.api_error:
+                block.pack_start(_label("as of " + Formatting.clock(data.api.fetched_at), "tc-sub"),
+                                 False, False, 0)
+            self.pack_start(block, False, False, 0)
+        self.show_all()
+
+
+class StatsPanel(PopupWindow):
     """The panel that opens from the tray icon."""
 
     def __init__(self, state, on_open_settings, on_quit):
-        Gtk.Window.__init__(self, type=Gtk.WindowType.TOPLEVEL)
-        install_css()
+        PopupWindow.__init__(self, state.settings)
         self.state = state
-        self.settings = state.settings
         self.on_open_settings = on_open_settings
         self.on_quit = on_quit
-        self._shown_at = 0.0
         self.detailed = False
-
-        self.set_name("tc-panel")
-        self.set_title("trackai")
-        self.set_decorated(False)
-        self.set_resizable(False)
-        self.set_skip_taskbar_hint(True)
-        self.set_skip_pager_hint(True)
-        self.set_keep_above(True)
-        self.set_type_hint(Gdk.WindowTypeHint.UTILITY)
-        self.set_app_paintable(True)
         self.set_default_size(PANEL_WIDTH, -1)
-        self.set_border_width(0)
+        self.set_size_request(PANEL_WIDTH, -1)
 
-        self._apply_rgba_visual()
-        self.connect("draw", self._draw_background)
-        self.connect("focus-out-event", self._on_focus_out)
-        self.connect("key-press-event", self._on_key_press)
-        self.connect("delete-event", self._on_delete)
-
-        self.root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        self.root.set_border_width(14)
+        self.root = _vbox(0)
         self.add(self.root)
         self.rebuild()
 
-    # -- window chrome -----------------------------------------------------
-
-    def _apply_rgba_visual(self):
-        screen = self.get_screen()
-        if screen is None:
-            return
-        visual = screen.get_rgba_visual()
-        if visual is not None and screen.is_composited():
-            self.set_visual(visual)
-
-    def _draw_background(self, widget, cr):
-        if cairo is not None:
-            cr.set_operator(cairo.OPERATOR_SOURCE)
-        cr.set_source_rgba(0, 0, 0, 0)
-        cr.paint()
-        if cairo is not None:
-            cr.set_operator(cairo.OPERATOR_OVER)
-
-        width = widget.get_allocated_width()
-        height = widget.get_allocated_height()
-        alpha = self.settings.panel_alpha
-        base = (0.13, 0.13, 0.14) if prefers_dark() else (0.97, 0.97, 0.98)
-        _rounded_rect(cr, 0, 0, width, height, CORNER_RADIUS)
-        cr.set_source_rgba(base[0], base[1], base[2], alpha)
-        cr.fill_preserve()
-        edge = (1.0, 1.0, 1.0, 0.14) if prefers_dark() else (0.0, 0.0, 0.0, 0.12)
-        cr.set_line_width(1.0)
-        cr.set_source_rgba(*edge)
-        cr.stroke()
-        return False
-
-    def _on_focus_out(self, *_args):
-        # Ignore the focus churn that happens while the window is mapping.
-        if time.time() - self._shown_at > 0.6:
-            self.hide_panel()
-        return False
-
-    def _on_key_press(self, _widget, event):
-        if event.keyval == Gdk.KEY_Escape:
-            self.hide_panel()
-            return True
-        return False
-
-    def _on_delete(self, *_args):
-        self.hide_panel()
-        return True    # never destroy; the tray icon owns the lifecycle
-
-    # -- show / hide -------------------------------------------------------
-
-    def toggle(self):
-        if self.get_visible():
-            self.hide_panel()
-        else:
-            self.show_panel()
-
+    # Kept for callers of the previous API.
     def show_panel(self):
-        self.rebuild()
-        self.show_all()
-        self._position()
-        self._shown_at = time.time()
-        self.present_with_time(Gtk.get_current_event_time())
-        self.state.refresh()
+        self.popup_at()
 
     def hide_panel(self):
-        self.hide()
+        self.dismiss()
 
-    def _position(self):
-        display = Gdk.Display.get_default()
-        if display is None:
-            return
-        monitor = None
-        try:
-            monitor = display.get_primary_monitor()
-        except Exception:
-            monitor = None
-        if monitor is None:
-            try:
-                monitor = display.get_monitor(0)
-            except Exception:
-                monitor = None
-        if monitor is None:
-            return
-        area = monitor.get_workarea()
-        width, height = self.get_size()
-        x = area.x + area.width - width - 12
-        y = area.y + 12
-        # Keep the panel inside the work area if it is taller than the screen.
-        if y + height > area.y + area.height:
-            y = max(area.y, area.y + area.height - height - 12)
-        self.move(x, y)
+    def toggle(self):
+        self.toggle_at()
+
+    def popup_at(self, root_x=None, root_y=None, anchor_rect=None):
+        self.rebuild()
+        PopupWindow.popup_at(self, root_x, root_y, anchor_rect)
+        self.state.refresh()
 
     # -- content -----------------------------------------------------------
 
@@ -331,201 +395,113 @@ class StatsPanel(Gtk.Window):
             self.root.remove(child)
             child.destroy()
 
-        self.root.pack_start(self._header(), False, False, 0)
+        header = self._header()
+        header.set_margin_start(14)
+        header.set_margin_end(10)
+        header.set_margin_top(11)
+        header.set_margin_bottom(10)
+        self.root.pack_start(header, False, False, 0)
 
-        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        if not self.state.accounts:
-            body.pack_start(_label("No providers found. Run `claude` and/or `codex`, log in, then refresh.", "tc-note"), False, False, 0)
-        for data in self.state.accounts:
-            block = SectionBlock(data.name, data.kind)
-            if data.account.email:
-                block.add_row(_label(data.account.email, "tc-sub"))
-            if self.detailed:
-                block.add_row(self._plan_section(data))
-                block.add_row(self._local_section(data))
-                if data.local.per_model_30d:
-                    block.add_row(self._model_section(data.local))
-                block.add_row(self._footer(data))
-            else:
-                for metric, title in (("session", "Session"), ("daily", "Daily"), ("weekly", "Weekly")):
-                    percent = data.metric_percent(metric)
-                    limit = data.api.limit(metric) if data.api else None
-                    if limit:
-                        title = limit.display_name
-                    if metric == "daily":
-                        value = "{} · {} est.".format(Formatting.tokens(data.local.today.total), Formatting.usd(data.local.today.cost))
-                        subtitle = "vs. busiest day in 30 days" if data.local.has_daily_baseline else "Collecting daily history"
-                    else:
-                        value = "{:.0f}%".format(percent) if percent is not None else "—"
-                        subtitle = Formatting.resets_in(limit.resets_at) if limit else ("Local usage vs. busiest week in 90 days" if metric == "weekly" else "No plan-limit data")
-                    block.add_row(BarRow(title, percent or 0, value, subtitle, self.settings))
-                if data.api:
-                    block.add_row(_label("Limits observed " + self._observed_at(data.api.fetched_at), "tc-sub"))
-                if data.api_error:
-                    block.add_row(_label(data.api_error, "tc-warn"))
-                if data.credential_status != STATUS_OK:
-                    block.add_row(_label(data.credential_status + " — run the provider CLI to log in", "tc-warn"))
-            body.pack_start(block, False, False, 0)
+        body = _vbox(9)
+        body.set_margin_start(12)
+        body.set_margin_end(12)
+        accounts = self.state.accounts
+        if not accounts:
+            empty = _vbox(4)
+            empty.set_margin_top(18)
+            empty.set_margin_bottom(18)
+            empty.pack_start(_label("No providers yet", "tc-name", xalign=0.5), False, False, 0)
+            empty.pack_start(_label("Run `claude` or `codex` in a terminal and log in,\nthen refresh.",
+                                    "tc-sub", xalign=0.5), False, False, 0)
+            body.pack_start(empty, False, False, 0)
+        for data in accounts:
+            card = detailed_card(data, self.settings) if self.detailed else overview_card(data, self.settings)
+            body.pack_start(card, False, False, 0)
+
         scroller = Gtk.ScrolledWindow()
+        scroller.get_style_context().add_class("tc-scroll")
         scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        scroller.set_max_content_height(PANEL_MAX_SCROLL_HEIGHT)
+        scroller.set_max_content_height(DETAILED_MAX_HEIGHT if self.detailed else OVERVIEW_MAX_HEIGHT)
         scroller.set_propagate_natural_height(True)
+        scroller.set_shadow_type(Gtk.ShadowType.NONE)
         scroller.add(body)
         self.root.pack_start(scroller, True, True, 0)
-        pages = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        for title, detailed in (("Overview", False), ("Detailed", True)):
-            button = Gtk.ToggleButton(label=title)
-            button.set_active(self.detailed == detailed)
-            button.connect("clicked", self._change_page, detailed)
-            pages.pack_start(button, True, True, 0)
-        self.root.pack_start(pages, False, False, 0)
 
+        footer = self._footer()
+        footer.set_margin_start(12)
+        footer.set_margin_end(10)
+        footer.set_margin_top(10)
+        footer.set_margin_bottom(10)
+        self.root.pack_start(footer, False, False, 0)
         self.root.show_all()
+        # Shrink back when switching from Detailed to a shorter Overview.
+        self.resize(PANEL_WIDTH, 1)
 
     def _header(self):
-        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-
+        box = _hbox(8)
+        percent = self.state.icon_percent()
         icon = Gtk.DrawingArea()
         icon.set_size_request(16, 16)
-        icon.connect("draw", self._draw_header_icon)
         icon.set_valign(Gtk.Align.CENTER)
+        icon.connect("draw", self._draw_header_icon)
         box.pack_start(icon, False, False, 0)
         box.pack_start(_label("trackai", "tc-title"), False, False, 0)
-
-        spacer = Gtk.Box()
-        spacer.set_hexpand(True)
-        box.pack_start(spacer, True, True, 0)
-
-        box.pack_end(self._icon_button("system-shutdown-symbolic", "Quit trackai",
-                                       lambda *_: self.on_quit()), False, False, 0)
-        box.pack_end(self._icon_button("emblem-system-symbolic", "Settings",
-                                       lambda *_: self.on_open_settings()), False, False, 0)
+        if percent is not None:
+            box.pack_start(_percent_label(percent, "tc-percent-small", self.settings), False, False, 0)
+        box.pack_start(_spacer(), True, True, 0)
         refresh = self._icon_button("view-refresh-symbolic", "Refresh now",
                                     lambda *_: self.state.refresh(force=True))
         refresh.set_sensitive(not self.state.is_refreshing)
-        box.pack_end(refresh, False, False, 0)
+        box.pack_start(refresh, False, False, 0)
+        box.pack_start(self._icon_button("system-shutdown-symbolic", "Quit trackai",
+                                         lambda *_: self.on_quit()), False, False, 0)
+        return box
+
+    def _footer(self):
+        box = _hbox(8)
+        segments = _hbox(2)
+        segments.get_style_context().add_class("tc-segments")
+        for title, detailed in (("Overview", False), ("Detailed", True)):
+            button = Gtk.Button(label=title)
+            button.set_relief(Gtk.ReliefStyle.NONE)
+            button.set_can_focus(False)
+            ctx = button.get_style_context()
+            ctx.add_class("tc-seg")
+            if self.detailed == detailed:
+                ctx.add_class("tc-selected")
+            button.connect("clicked", self._change_page, detailed)
+            segments.pack_start(button, False, False, 0)
+        segments.set_valign(Gtk.Align.CENTER)
+        box.pack_start(segments, False, False, 0)
+        box.pack_start(_spacer(), True, True, 0)
+        ago = _ago(self.state.last_refresh)
+        if self.state.is_refreshing:
+            ago = "refreshing…"
+        if ago:
+            label = _label(ago, "tc-muted", xalign=1.0)
+            label.set_valign(Gtk.Align.CENTER)
+            box.pack_start(label, False, False, 0)
+        box.pack_start(self._icon_button("emblem-system-symbolic", "Settings",
+                                         lambda *_: self.on_open_settings()), False, False, 0)
         return box
 
     def _icon_button(self, icon_name, tooltip, callback):
         button = Gtk.Button.new_from_icon_name(icon_name, Gtk.IconSize.MENU)
         button.set_relief(Gtk.ReliefStyle.NONE)
+        button.set_can_focus(False)
         button.set_tooltip_text(tooltip)
-        button.get_style_context().add_class("tc-iconbutton")
+        button.set_valign(Gtk.Align.CENTER)
+        button.get_style_context().add_class("tc-icon")
         button.connect("clicked", callback)
         return button
 
-    def _draw_header_icon(self, widget, cr):
+    def _draw_header_icon(self, _widget, cr):
         percent = self.state.icon_percent()
         rgb = self.settings.usage_color(percent) if percent is not None else COLOR_GRAY
-        status_icon.draw_icon(cr, 16, rgb, self.state.icon_kind())
+        status_icon.draw_icon(cr, 16, rgb, self.state.icon_kind(), percent)
         return False
 
     def _change_page(self, _button, detailed):
         if self.detailed != detailed:
             self.detailed = detailed
             self.rebuild()
-
-    @staticmethod
-    def _observed_at(date):
-        return date.astimezone().strftime("%b %d, %H:%M")
-
-    def _plan_section(self, data):
-        block = SectionBlock("Plan limits")
-        api = data.api
-        if api is not None:
-            for limit in api.limits:
-                block.add_row(BarRow(
-                    limit.display_name,
-                    limit.percent,
-                    "{:.0f}%".format(limit.percent),
-                    Formatting.resets_in(limit.resets_at),
-                    self.settings,
-                ))
-            if api.extra_credits_used is not None:
-                block.add_row(_label(
-                    "Extra usage credits used: " + Formatting.usd(api.extra_credits_used),
-                    "tc-sub",
-                ))
-            if (datetime.now(timezone.utc) - api.fetched_at).total_seconds() > 600:
-                block.add_row(_label("as of " + Formatting.clock(api.fetched_at), "tc-sub"))
-        else:
-            block.add_row(_label(data.api_error or "No plan limits available yet. Run the provider CLI, then refresh.", "tc-note"))
-        if data.api:
-            block.add_row(_label("Limits observed " + self._observed_at(data.api.fetched_at), "tc-sub"))
-            if data.api_error:
-                block.add_row(_label(data.api_error, "tc-warn"))
-        if data.credential_status != STATUS_OK:
-            block.add_row(_label(data.credential_status + " — run the provider CLI to log in", "tc-warn"))
-        return block
-
-    def _local_section(self, data):
-        block = SectionBlock("Token usage (local, estimated cost)")
-        local = data.local
-        if local is None:
-            block.add_row(_label("No transcripts found yet.", "tc-note"))
-            return block
-
-        block.add_row(BarRow(
-            "Today",
-            local.daily_relative_percent if local.has_daily_baseline else 0,
-            "{} · {}".format(Formatting.tokens(local.today.total), Formatting.usd(local.today.cost)),
-            ("vs. busiest day in last 30 days" if local.has_daily_baseline else "Collecting daily history"),
-            self.settings,
-        ))
-        for name, totals in (
-            ("Last 5 hours", local.last5h),
-            ("Last 7 days", local.last7d),
-            ("Last 30 days", local.last30d),
-            ("All time", local.all_time),
-        ):
-            block.add_row(self._stat_line(name, totals))
-        totals = local.last30d
-        block.add_row(_label("30d: in {} · out {} · cache write {} · cache read {}".format(
-            Formatting.tokens(totals.input), Formatting.tokens(totals.output),
-            Formatting.tokens(totals.cache_create), Formatting.tokens(totals.cache_read)), "tc-sub"))
-        return block
-
-    def _stat_line(self, name, totals):
-        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        row.pack_start(_label(name, "tc-line"), False, False, 0)
-        spacer = Gtk.Box()
-        spacer.set_hexpand(True)
-        row.pack_start(spacer, True, True, 0)
-        value = "{} · {}".format(Formatting.tokens(totals.total), Formatting.usd(totals.cost))
-        row.pack_end(_label(value, "tc-line-value", xalign=1.0), False, False, 0)
-        return row
-
-    def _model_section(self, local):
-        block = SectionBlock("By model (last 30 days, estimated cost)")
-        top = local.last30d.total or 1
-        for stats in local.per_model_30d:
-            totals = stats.totals
-            block.add_row(BarRow(
-                pretty_model_name(stats.model),
-                totals.total / float(max(1, top)) * 100.0,
-                "{} · {}".format(Formatting.tokens(totals.total), Formatting.usd(totals.cost)),
-                "in {} · out {} · cache {}".format(
-                    Formatting.tokens(totals.input),
-                    Formatting.tokens(totals.output),
-                    Formatting.tokens(totals.cache_create + totals.cache_read),
-                ),
-                self.settings,
-            ))
-        return block
-
-    def _footer(self, data):
-        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        if data.subscription_type:
-            text = data.subscription_type.capitalize()
-            if data.rate_limit_tier:
-                text += " · " + data.rate_limit_tier
-            row.pack_start(_label(text, "tc-sub"), False, False, 0)
-        spacer = Gtk.Box()
-        spacer.set_hexpand(True)
-        row.pack_start(spacer, True, True, 0)
-        if self.state.last_refresh is not None:
-            row.pack_end(
-                _label("updated " + Formatting.clock(self.state.last_refresh), "tc-sub", xalign=1.0),
-                False, False, 0,
-            )
-        return row

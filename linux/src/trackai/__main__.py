@@ -62,8 +62,7 @@ def main(argv=None):
         from .app import run
     except (ImportError, ValueError) as err:
         sys.stderr.write("trackai: GTK bindings unavailable ({}). Re-run install.sh or install\n"
-                         "python3-gi python3-gi-cairo python3-cairo gir1.2-gtk-3.0 "
-                         "gir1.2-ayatanaappindicator3-0.1.\n".format(err))
+                         "python3-gi python3-gi-cairo python3-cairo gir1.2-gtk-3.0.\n".format(err))
         return 1
     return run()
 

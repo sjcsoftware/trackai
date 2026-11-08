@@ -1,45 +1,37 @@
-"""Tray icon, menu and window wiring (port of AppDelegate.swift).
+"""Tray icon, panel and settings wiring (port of AppDelegate.swift).
 
-GNOME has no click-to-open-a-view tray protocol: StatusNotifierItem can only
-serialise a plain menu over D-Bus, so the icon opens a menu with a live usage
-summary, and the full translucent panel is one click (or a middle click) away.
-Desktops with a classic X11 tray get the direct click-to-open behaviour via
-the Gtk.StatusIcon fallback.
+The icon is a StatusNotifierItem we serve ourselves (``sni``), which every
+modern tray speaks: KDE, the GNOME AppIndicator extension, waybar, eww,
+polybar's and xfce4-panel's SNI plugins. A click opens the panel at the icon;
+hovering shows the host's tooltip with a short summary. Without a
+StatusNotifierWatcher (i3bar, stalonetray, older panels) the classic XEmbed
+tray icon takes over, and its hover shows the same summary as a small card.
+If a watcher appears later (a bar that starts after us), we switch to it.
 """
 
 from __future__ import annotations
 
-import importlib
 import fcntl
 import os
 import signal
 import sys
+import warnings
 
 import gi
 
 gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
 
-from gi.repository import GLib, Gtk   # noqa: E402
+from gi.repository import Gdk, GLib, Gtk   # noqa: E402
 
-from . import status_icon             # noqa: E402
+from . import sni, status_icon, summary   # noqa: E402
 from .settings import PID_FILE, Settings, ensure_dir   # noqa: E402
 from .state import AppState           # noqa: E402
 from .settings_view import SettingsWindow   # noqa: E402
-from .stats_view import StatsPanel    # noqa: E402
-from .transcripts import Formatting   # noqa: E402
+from .stats_view import HoverCard, StatsPanel   # noqa: E402
 
-INDICATOR_ID = "trackai"
-
-
-def _load_indicator_module():
-    """Ayatana first (22.04+), then the older libappindicator (20.04)."""
-    for name in ("AyatanaAppIndicator3", "AppIndicator3"):
-        try:
-            gi.require_version(name, "0.1")
-            return importlib.import_module("gi.repository." + name)
-        except (ImportError, ValueError):
-            continue
-    return None
+ITEM_ID = "trackai"
+XEMBED_SIZE = 22
 
 
 class TrayApp(object):
@@ -50,19 +42,22 @@ class TrayApp(object):
         self.state.add_listener(self._on_state_changed)
         self.settings.add_listener(self._on_settings_changed)
 
-        self.icon_dir = status_icon.ensure_tray_icons()
         self.panel = StatsPanel(self.state, self.open_settings, self.quit)
         self.settings_window = None
         self._timer_id = None
-        self._icon_state = None
-        self._dynamic_items = []
+        self._xembed = None
+        self._xembed_size = XEMBED_SIZE
+        self._appearance = None
 
-        self.indicator_module = _load_indicator_module()
-        self.indicator = None
-        self.status_icon_fallback = None
-        self.menu = self._build_menu()
-        self._install_tray()
+        self.item = sni.StatusNotifierItem(ITEM_ID, "trackai", self._on_item_activate,
+                                           self._on_host_changed)
+        if not self.item.start():
+            self._show_xembed(True)
+        else:
+            # Give an existing watcher a moment to accept us before falling back.
+            GLib.timeout_add(1500, self._fallback_if_unregistered)
 
+        self._update_tray()
         self._install_signal_handlers()
         self._write_pid_file()
 
@@ -82,156 +77,101 @@ class TrayApp(object):
             sys.stderr.write("trackai: UI update failed: {}\n".format(err))
         return False
 
-    # -- tray --------------------------------------------------------------
+    # -- tray hosts --------------------------------------------------------
 
-    def _install_tray(self):
-        module = self.indicator_module
-        if module is not None:
-            self.indicator = module.Indicator.new(
-                INDICATOR_ID,
-                status_icon.icon_name("gray"),
-                module.IndicatorCategory.APPLICATION_STATUS,
-            )
-            if self.icon_dir:
-                self.indicator.set_icon_theme_path(self.icon_dir)
-            self.indicator.set_status(module.IndicatorStatus.ACTIVE)
-            self.indicator.set_title("trackai")
-            self.indicator.set_menu(self.menu)
-            try:
-                self.indicator.set_secondary_activate_target(self.open_item)
-            except Exception:
-                pass
+    def _on_item_activate(self, x, y):
+        self.panel.toggle_at(x, y)
+
+    def _on_host_changed(self, available):
+        self._show_xembed(not available)
+
+    def _fallback_if_unregistered(self):
+        if not self.item.registered:
+            self._show_xembed(True)
+        return False
+
+    def _show_xembed(self, visible):
+        if not visible:
+            if self._xembed is not None:
+                self._xembed.set_visible(False)
             return
+        if self._xembed is None:
+            display = Gdk.Display.get_default()
+            if display is None or type(display).__name__ != "X11Display":
+                return      # the XEmbed tray only exists on X11
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")   # deprecated in GTK, still the only XEmbed API
+                    icon = Gtk.StatusIcon()
+            except Exception as err:
+                sys.stderr.write("trackai: no system tray available ({}).\n".format(err))
+                return
+            icon.set_title("trackai")
+            icon.set_has_tooltip(True)
+            icon.connect("query-tooltip", self._on_xembed_tooltip)
+            icon.connect("activate", self._on_xembed_click)
+            icon.connect("popup-menu", lambda icon, *_: self._on_xembed_click(icon))
+            icon.connect("size-changed", self._on_xembed_size)
+            self._xembed = icon
+            self._appearance = None
+            self._update_tray()
+        self._xembed.set_visible(True)
 
-        # No AppIndicator available: fall back to the legacy X11 tray icon,
-        # which supports opening the panel with a single left click.
-        try:
-            icon = Gtk.StatusIcon()
-            path = None
-            if self.icon_dir:
-                path = os.path.join(self.icon_dir, status_icon.icon_name("gray") + ".png")
-            if path and os.path.exists(path):
-                icon.set_from_file(path)
-            else:
-                icon.set_from_icon_name("utilities-system-monitor-symbolic")
-            icon.set_tooltip_text("trackai")
-            icon.connect("activate", lambda *_: self.panel.toggle())
-            icon.connect("popup-menu", self._on_status_icon_menu)
-            self.status_icon_fallback = icon
-        except Exception as err:
-            sys.stderr.write(
-                "trackai: no system tray available ({}).\n"
-                "Install gir1.2-ayatanaappindicator3-0.1 and, on GNOME, enable the\n"
-                "AppIndicator extension.\n".format(err)
-            )
+    def _on_xembed_click(self, icon):
+        ok, _screen, area, _orientation = icon.get_geometry()
+        rect = (area.x, area.y, area.width, area.height) if ok else None
+        self.panel.toggle_at(None, None, rect)
 
-    def _on_status_icon_menu(self, icon, button, activate_time):
-        self.menu.popup(None, None, Gtk.StatusIcon.position_menu, icon, button, activate_time)
+    def _on_xembed_tooltip(self, _icon, _x, _y, _keyboard, tooltip):
+        if self.panel.get_visible():
+            return False
+        tooltip.set_custom(HoverCard(self.state))
+        return True
 
-    def _build_menu(self):
-        menu = Gtk.Menu()
-
-        self.open_item = Gtk.MenuItem(label="Open trackai panel")
-        self.open_item.connect("activate", lambda *_: self.panel.show_panel())
-        menu.append(self.open_item)
-
-        menu.append(Gtk.SeparatorMenuItem())
-
-        # Placeholder for the live summary lines, rebuilt on every refresh.
-        self._summary_anchor = Gtk.SeparatorMenuItem()
-        menu.append(self._summary_anchor)
-
-        refresh_item = Gtk.MenuItem(label="Refresh now")
-        refresh_item.connect("activate", lambda *_: self.state.refresh(force=True))
-        menu.append(refresh_item)
-
-        settings_item = Gtk.MenuItem(label="Settings…")
-        settings_item.connect("activate", lambda *_: self.open_settings())
-        menu.append(settings_item)
-
-        menu.append(Gtk.SeparatorMenuItem())
-
-        quit_item = Gtk.MenuItem(label="Quit trackai")
-        quit_item.connect("activate", lambda *_: self.quit())
-        menu.append(quit_item)
-
-        menu.show_all()
-        return menu
-
-    def _rebuild_summary(self):
-        for item in self._dynamic_items:
-            self.menu.remove(item)
-            item.destroy()
-        self._dynamic_items = []
-
-        lines = []
-        if not self.state.accounts:
-            lines.append("No providers found — run trackai setup")
-        for data in self.state.accounts:
-            lines.append(data.name)
-            if data.api is not None:
-                for limit in data.api.limits:
-                    lines.append("{}  {:.0f}%".format(limit.display_name, limit.percent))
-                lines.append("Limits observed " + data.api.fetched_at.astimezone().strftime("%b %d, %H:%M"))
-            if data.api_error:
-                lines.append(data.api_error)
-            lines.append("Today  {} · {} est.".format(
-                Formatting.tokens(data.local.today.total), Formatting.usd(data.local.today.cost)))
-
-        position = 2   # after "Open panel" + separator
-        for text in lines:
-            item = Gtk.MenuItem(label=text)
-            item.set_sensitive(False)
-            self.menu.insert(item, position)
-            item.show()
-            self._dynamic_items.append(item)
-            position += 1
+    def _on_xembed_size(self, _icon, size):
+        self._xembed_size = max(16, int(size))
+        self._appearance = None
+        self._update_tray()
+        return True
 
     # -- icon --------------------------------------------------------------
 
-    def _update_icon(self):
+    def _update_tray(self):
         percent = self.state.icon_percent()
         state = self.settings.usage_color_name(percent) if percent is not None else "gray"
-        name = status_icon.icon_name(state, self.state.icon_kind())
-        label = ""
-        if self.settings.show_percent_in_menu_bar and percent is not None:
-            label = "{:.0f}%".format(percent)
+        kind = self.state.icon_kind()
+        label = summary.label(percent) if self.settings.show_percent_in_menu_bar else ""
+        title, body = summary.tooltip(self.state.accounts, self.settings)
 
-        if self.indicator is not None:
-            if name != self._icon_state:
-                self.indicator.set_icon_full(name, "trackai usage")
-                self._icon_state = name
-            try:
-                self.indicator.set_label(label, "100%")
-            except Exception:
-                pass
-        elif self.status_icon_fallback is not None:
-            if name != self._icon_state and self.icon_dir:
-                path = os.path.join(self.icon_dir, name + ".png")
-                if os.path.exists(path):
-                    self.status_icon_fallback.set_from_file(path)
-                self._icon_state = name
-            tooltip = "trackai"
-            if percent is not None:
-                tooltip = "trackai — {:.0f}%".format(percent)
-            self.status_icon_fallback.set_tooltip_text(tooltip)
+        self.item.set_icon(status_icon.pixmaps(state, kind, percent))
+        self.item.set_label(label, "100%")
+        self.item.set_tooltip(title, body)
+
+        if self._xembed is not None:
+            level = None if kind else int(round((percent or 0) / 5.0)) * 5
+            appearance = (state, kind, level, self._xembed_size)
+            if appearance != self._appearance:
+                pixbuf = status_icon.pixbuf(self._xembed_size, state, kind, level)
+                if pixbuf is not None:
+                    self._xembed.set_from_pixbuf(pixbuf)
+                else:
+                    self._xembed.set_from_icon_name("utilities-system-monitor-symbolic")
+                self._appearance = appearance
 
     # -- observers ---------------------------------------------------------
 
     def _on_state_changed(self):
-        self._update_icon()
-        self._rebuild_summary()
+        self._update_tray()
         if self.panel.get_visible():
             self.panel.rebuild()
         if self.settings_window is not None:
             self.settings_window.refresh_accounts()
 
     def _on_settings_changed(self):
-        self._update_icon()
+        self._update_tray()
         self._reschedule_timer()
         self.state.refresh()
         if self.panel.get_visible():
-            self.panel.queue_draw()
             self.panel.rebuild()
 
     # -- timer -------------------------------------------------------------
@@ -250,7 +190,7 @@ class TrayApp(object):
     # -- windows -----------------------------------------------------------
 
     def open_settings(self):
-        self.panel.hide_panel()
+        self.panel.dismiss()
         if self.settings_window is None:
             self.settings_window = SettingsWindow(self.state, self._reschedule_timer)
         self.settings_window.present_window()
@@ -289,6 +229,8 @@ class TrayApp(object):
             pass
 
     def quit(self):
+        self.panel.dismiss()
+        self.item.stop()
         self._remove_pid_file()
         Gtk.main_quit()
 

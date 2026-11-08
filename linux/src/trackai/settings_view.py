@@ -5,8 +5,9 @@ from __future__ import annotations
 import gi
 
 gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
 
-from gi.repository import Gtk, Pango   # noqa: E402
+from gi.repository import Gdk, Gtk, Pango   # noqa: E402
 
 from .providers import PROVIDERS
 from .settings import COLOR_METRICS    # noqa: E402
@@ -16,18 +17,23 @@ REFRESH_CHOICES = [("30", "30s", 30.0), ("60", "1m", 60.0), ("120", "2m", 120.0)
 
 
 def _section(title):
-    frame = Gtk.Frame(label=title)
-    frame.set_label_align(0.02, 0.5)
-    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-    box.set_border_width(12)
-    frame.add(box)
-    return frame, box
+    """A caption above a rounded card, like the panel's provider cards."""
+    outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+    caption = Gtk.Label(label=title.upper())
+    caption.set_xalign(0.0)
+    caption.get_style_context().add_class("tc-section")
+    outer.pack_start(caption, False, False, 0)
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+    box.get_style_context().add_class("tc-card")
+    outer.pack_start(box, False, False, 0)
+    return outer, box
 
 
 def _row(label_text, widget, expand_widget=False):
     row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
     label = Gtk.Label(label=label_text)
     label.set_xalign(0.0)
+    label.get_style_context().add_class("tc-row-label")
     row.pack_start(label, False, False, 0)
     spacer = Gtk.Box()
     spacer.set_hexpand(True)
@@ -35,6 +41,15 @@ def _row(label_text, widget, expand_widget=False):
     widget.set_valign(Gtk.Align.CENTER)
     row.pack_end(widget, expand_widget, expand_widget, 0)
     return row
+
+
+def _hint(text):
+    hint = Gtk.Label(label=text)
+    hint.set_xalign(0.0)
+    hint.set_line_wrap(True)
+    hint.set_max_width_chars(60)
+    hint.get_style_context().add_class("tc-sub")
+    return hint
 
 
 class SettingsWindow(Gtk.Window):
@@ -46,14 +61,19 @@ class SettingsWindow(Gtk.Window):
         self.on_interval_changed = on_interval_changed
         self._loading = True
 
-        self.set_default_size(460, 640)
+        self.set_default_size(480, 660)
         self.set_resizable(True)
+        # A dialog, so tiling window managers float it instead of tiling it.
+        self.set_type_hint(Gdk.WindowTypeHint.DIALOG)
+        self.set_position(Gtk.WindowPosition.CENTER)
+        self.set_icon_name("trackai")
+        self.get_style_context().add_class("tc-settings")
         self.connect("delete-event", self._on_delete)
 
         scroller = Gtk.ScrolledWindow()
         scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
-        outer.set_border_width(16)
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
+        outer.set_border_width(18)
         scroller.add(outer)
         self.add(scroller)
 
@@ -82,6 +102,8 @@ class SettingsWindow(Gtk.Window):
         self.percent_switch.set_active(self.settings.show_percent_in_menu_bar)
         self.percent_switch.connect("notify::active", self._on_percent_toggled)
         box.pack_start(_row("Show percentage next to icon", self.percent_switch), False, False, 0)
+        box.pack_start(_hint("Only trays that support text labels show it (GNOME, Ayatana). "
+                             "Hovering the icon always shows the numbers."), False, False, 0)
 
         mode = Gtk.ComboBoxText()
         for key, title in (("average", "Average"), ("highest", "Highest"), ("single", "Single account")):
@@ -91,6 +113,7 @@ class SettingsWindow(Gtk.Window):
         box.pack_start(_row("Combine providers", mode), False, False, 0)
         for provider in PROVIDERS:
             check = Gtk.CheckButton(label="Include " + provider.name + " in tray calculation")
+            check.get_child().get_style_context().add_class("tc-row-label")
             check.set_active(provider.kind in self.settings.icon_providers)
             check.connect("toggled", self._toggle_provider, provider.kind, "icon_providers")
             box.pack_start(check, False, False, 0)
@@ -117,6 +140,7 @@ class SettingsWindow(Gtk.Window):
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         label = Gtk.Label(label=label_text)
         label.set_xalign(0.0)
+        label.get_style_context().add_class("tc-row-label")
         label.set_size_request(90, -1)
         row.pack_start(label, False, False, 0)
 
@@ -129,7 +153,7 @@ class SettingsWindow(Gtk.Window):
         readout = Gtk.Label(label="{:.0f}%".format(value))
         readout.set_size_request(42, -1)
         readout.set_xalign(1.0)
-        readout.get_style_context().add_class("tc-line-value")
+        readout.get_style_context().add_class("tc-value")
         row.pack_end(readout, False, False, 0)
 
         scale.connect("value-changed", callback, readout)
@@ -153,13 +177,8 @@ class SettingsWindow(Gtk.Window):
         box.pack_start(_row("Transparency", self.transparency_scale, expand_widget=True),
                        False, False, 0)
 
-        hint = Gtk.Label(
-            label="Blur behind the panel depends on your compositor; GNOME shows a "
-                  "flat translucent panel.")
-        hint.set_xalign(0.0)
-        hint.set_line_wrap(True)
-        hint.get_style_context().add_class("tc-sub")
-        box.pack_start(hint, False, False, 0)
+        box.pack_start(_hint("Blur behind the panel depends on your compositor; without "
+                             "blur the panel is a flat translucent sheet."), False, False, 0)
         return frame
 
     def _general_section(self):
@@ -213,6 +232,7 @@ class SettingsWindow(Gtk.Window):
                 continue
             row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
             check = Gtk.CheckButton(label=registry[kind].name)
+            check.get_child().get_style_context().add_class("tc-row-label")
             check.set_active(kind in self.settings.enabled_providers)
             check.connect("toggled", self._toggle_provider, kind, "enabled_providers")
             row.pack_start(check, True, True, 0)
@@ -250,13 +270,8 @@ class SettingsWindow(Gtk.Window):
         add_row.pack_end(add_button, False, False, 0)
         box.pack_start(add_row, False, False, 0)
 
-        hint = Gtk.Label(
-            label="Add another Claude Code config directory (CLAUDE_CONFIG_DIR) to "
-                  "track a second account.")
-        hint.set_xalign(0.0)
-        hint.set_line_wrap(True)
-        hint.get_style_context().add_class("tc-sub")
-        box.pack_start(hint, False, False, 0)
+        box.pack_start(_hint("Add another Claude Code config directory (CLAUDE_CONFIG_DIR) to "
+                             "track a second account."), False, False, 0)
         return frame
 
     # -- dynamic bits ------------------------------------------------------
@@ -282,7 +297,7 @@ class SettingsWindow(Gtk.Window):
             label = Gtk.Label(label=directory)
             label.set_xalign(0.0)
             label.set_ellipsize(Pango.EllipsizeMode.MIDDLE)
-            label.get_style_context().add_class("tc-line-value")
+            label.get_style_context().add_class("tc-value")
             row.pack_start(label, True, True, 0)
             remove = Gtk.Button.new_from_icon_name("list-remove-symbolic", Gtk.IconSize.MENU)
             remove.set_relief(Gtk.ReliefStyle.NONE)

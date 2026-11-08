@@ -29,6 +29,9 @@ Sources/trackai/
   Views/                      Components, ProviderBoxes, PanelView, SettingsView
 linux/src/trackai/           GTK app, provider registry, scanners, settings
 linux/src/trackai/provider_mark.py  same outlines drawn with cairo
+linux/src/trackai/sni.py      StatusNotifierItem served over Gio D-Bus (no libappindicator)
+linux/src/trackai/popup.py    override-redirect panel + seat grab; x11.py finds the bar rect
+linux/src/trackai/style.py    palette/CSS from the GTK theme accent; summary.py hover text
 linux/bin/trackai             Linux CLI (separate from signed Mac bundle)
 linux/scripts/build.sh        tests + reproducible Linux source archive
 linux/scripts/smoke-ui.py     GTK checks and screenshots using synthetic data
@@ -112,9 +115,28 @@ only if Google exposes a quota endpoint that a consumer token can actually call.
   macro plugin, so the build fails. Build against the 26.x SDK:
   `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk ./scripts/build.sh <version>`.
 
+## Linux tray
+
+7. **Linux serves its own StatusNotifierItem.** libappindicator marks items
+   menu-only, so hosts open a menu on click; ours sets `ItemIsMenu=false` and
+   handles `Activate(x, y)` by opening the panel there. Hover text goes in both
+   `Title` (eww and similar hosts show only that) and `ToolTip`. Re-register
+   whenever `org.kde.StatusNotifierWatcher` reappears (bars restart). With no
+   watcher on X11, fall back to `Gtk.StatusIcon` (XEmbed), whose tooltip is the
+   `HoverCard` widget.
+8. **The panel is an override-redirect popup on X11** with a pointer+keyboard
+   seat grab: only Escape or an outside click closes it. Placement uses the
+   rect of the top-level window under the click (the bar), because i3 and many
+   bars set no `_NET_WORKAREA`/struts. Wayland keeps an undecorated top-level.
+   Never style per desktop: colours come from the GTK theme accent.
+
 ## Linux verification
 
 - Run `python3 -m unittest discover -s linux/tests -v` (standard library only).
+- Tray end-to-end: Xephyr (parented to an unmapped window) on a private
+  `dbus-run-session` with a stub watcher; check registration, `ItemIsMenu`,
+  placement under a 46px top bar, Escape / outside-click dismissal, page
+  switching, and re-registration after the watcher restarts.
 - Run `/usr/bin/python3 linux/scripts/smoke-ui.py /tmp/trackai-preview` with a
   display, or prefix with `xvfb-run -a` in CI. It uses synthetic data only.
 - `linux/scripts/build.sh` runs tests and regenerates the committed payload.

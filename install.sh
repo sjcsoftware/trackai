@@ -117,18 +117,6 @@ install_macos() {
 
 GI_OK='import gi; gi.require_version("Gtk", "3.0"); from gi.repository import Gtk'
 CAIRO_OK='import cairo; import gi; gi.require_foreign("cairo")'
-IND_OK='import gi
-ok = False
-for name in ("AyatanaAppIndicator3", "AppIndicator3"):
-    try:
-        gi.require_version(name, "0.1")
-        __import__("gi.repository." + name)
-        ok = True
-        break
-    except Exception:
-        pass
-raise SystemExit(0 if ok else 1)'
-
 py_has() { "$PYTHON" -c "$1" >/dev/null 2>&1; }
 
 missing_deps() {
@@ -136,28 +124,14 @@ missing_deps() {
     [ -x "$PYTHON" ] || missing+=("python3")
     py_has "$GI_OK" || missing+=("python3-gi" "gir1.2-gtk-3.0")
     py_has "$CAIRO_OK" || missing+=("python3-gi-cairo" "python3-cairo")
-    py_has "$IND_OK" || missing+=("indicator")
     printf '%s\n' "${missing[@]:-}"
-}
-
-indicator_package() {
-    # 22.04+ ships the Ayatana fork; 20.04 has both, preferring ayatana.
-    if have apt-cache && apt-cache show gir1.2-ayatanaappindicator3-0.1 >/dev/null 2>&1; then
-        echo "gir1.2-ayatanaappindicator3-0.1"
-    else
-        echo "gir1.2-appindicator3-0.1"
-    fi
 }
 
 install_deps() {
     local wanted=() pkg
     while read -r pkg; do
         [ -n "$pkg" ] || continue
-        if [ "$pkg" = "indicator" ]; then
-            wanted+=("$(indicator_package)")
-        else
-            wanted+=("$pkg")
-        fi
+        wanted+=("$pkg")
     done < <(missing_deps)
 
     if [ ${#wanted[@]} -eq 0 ]; then
@@ -168,8 +142,8 @@ install_deps() {
     if ! have apt-get; then
         echo "Missing dependencies: ${wanted[*]}" >&2
         echo "Install the equivalents for your distribution, then re-run this installer." >&2
-        echo "  Fedora:  sudo dnf install python3-gobject gtk3 libappindicator-gtk3 python3-cairo" >&2
-        echo "  Arch:    sudo pacman -S python-gobject gtk3 libappindicator-gtk3 python-cairo" >&2
+        echo "  Fedora:  sudo dnf install python3-gobject gtk3 python3-cairo" >&2
+        echo "  Arch:    sudo pacman -S python-gobject gtk3 python-cairo" >&2
         exit 1
     fi
 

@@ -1,28 +1,23 @@
 """The TrackAI tray icon (port of StatusIcon.swift).
 
-The bolt stands for the average across providers; a single or highest
-reading shows that provider's mark instead. AppIndicator/StatusNotifierItem
-can only show an icon it can load from a theme directory, so each glyph and
-colour state is rendered once with cairo into ``$XDG_CACHE_HOME/trackai/icons``
-and referenced by name.
+The bolt stands for the average across providers and fills from the bottom as
+usage climbs; a single or highest reading shows that provider's own mark.
+Everything is drawn with cairo, then handed to the tray either as
+StatusNotifierItem pixmaps or as a pixbuf for the legacy XEmbed tray, so no
+icon files are written or looked up in a theme.
 """
 
 from __future__ import annotations
 
 import math
-import os
 
 from . import provider_mark
-from .settings import COLOR_GRAY, COLOR_GREEN, COLOR_ORANGE, COLOR_RED, ICON_DIR, ensure_dir
+from .settings import COLOR_GRAY, COLOR_GREEN, COLOR_ORANGE, COLOR_RED
 
 try:
     import cairo
 except ImportError:      # rendering is optional; the app falls back to a theme icon
     cairo = None
-
-# Slightly irregular ray lengths for the organic Claude-logo feel.
-RAY_LENGTHS = [1.0, 0.78, 0.95, 0.8, 1.0, 0.78, 0.95, 0.8, 1.0, 0.78]
-RAY_COUNT = 10
 
 STATE_COLORS = {
     "gray": COLOR_GRAY,
@@ -31,42 +26,123 @@ STATE_COLORS = {
     "red": COLOR_RED,
 }
 
-TRAY_SIZE = 22
-ICON_NAME_PREFIX = "trackai-"
+# Every size a tray host is likely to ask for; hosts pick the closest one, so
+# each is drawn natively rather than scaled.
+PIXMAP_SIZES = (16, 22, 24, 32, 48, 64)
+
+# The bolt in a unit square, y pointing down (StatusIcon.swift, flipped).
+BOLT_POINTS = ((0.62, 0.00), (0.18, 0.56), (0.46, 0.56),
+               (0.26, 1.00), (0.82, 0.44), (0.54, 0.44))
 
 
-def draw_bolt(ctx, size, rgb, **_kwargs):
-    """TrackAI's bolt, drawn directly with Cairo; no external image assets."""
-    ctx.save()
-    ctx.set_source_rgb(*rgb)
-    points = ((0.59, 0.06), (0.20, 0.55), (0.46, 0.55),
-              (0.36, 0.94), (0.81, 0.40), (0.54, 0.40))
-    ctx.move_to(points[0][0] * size, points[0][1] * size)
-    for x, y in points[1:]:
-        ctx.line_to(x * size, y * size)
+def _bolt_path(ctx, x, y, w, h):
+    ctx.new_path()
+    ctx.move_to(x + BOLT_POINTS[0][0] * w, y + BOLT_POINTS[0][1] * h)
+    for px, py in BOLT_POINTS[1:]:
+        ctx.line_to(x + px * w, y + py * h)
     ctx.close_path()
-    ctx.fill()
+
+
+def draw_bolt(ctx, size, rgb, level=1.0, **_kwargs):
+    """The bolt gauge: a faint body, filled from the bottom to ``level`` (0..1)."""
+    level = max(0.0, min(1.0, float(level)))
+    line = max(1.0, size * 0.09)
+    inset = line / 2.0
+    box = size - line
+    ctx.save()
+    _bolt_path(ctx, inset, inset, box, box)
+    ctx.set_source_rgba(rgb[0], rgb[1], rgb[2], 0.22)
+    ctx.fill_preserve()
+    if level > 0:
+        ctx.save()
+        ctx.clip_preserve()
+        ctx.set_source_rgb(*rgb)
+        ctx.rectangle(0, inset + box * (1.0 - level), size, box * level + inset)
+        ctx.fill()
+        ctx.restore()
+        _bolt_path(ctx, inset, inset, box, box)
+    ctx.set_line_width(line)
+    ctx.set_line_join(cairo.LINE_JOIN_ROUND if cairo else 1)
+    ctx.set_source_rgb(*rgb)
+    ctx.stroke()
     ctx.restore()
 
 
-def draw_icon(ctx, size, rgb, kind=None):
-    """The bolt, or `kind`'s mark inset to the bolt's optical height."""
+def draw_icon(ctx, size, rgb, kind=None, percent=None):
+    """The bolt gauge, or ``kind``'s mark inset to the bolt's optical height."""
     if kind is None:
-        draw_bolt(ctx, size, rgb)
+        draw_bolt(ctx, size, rgb, (percent or 0.0) / 100.0)
     else:
         inset = size * 0.06
         provider_mark.draw_mark(ctx, kind, size - inset * 2, rgb, inset, inset)
 
 
-def render_surface(size, rgb, kind=None):
-    """Render a transparent square surface holding the bolt or a provider mark."""
+def render_surface(size, rgb, kind=None, percent=None):
+    """A transparent square surface holding the bolt gauge or a provider mark."""
     if cairo is None:
         return None
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, size, size)
     ctx = cairo.Context(surface)
-    draw_icon(ctx, size, rgb, kind)
+    draw_icon(ctx, size, rgb, kind, percent)
     surface.flush()
     return surface
+
+
+def surface_to_argb(surface):
+    # type: (object) -> bytes
+    """Cairo's native-endian premultiplied pixels to the straight ARGB, network
+    byte order, that StatusNotifierItem ``IconPixmap`` requires."""
+    width, height = surface.get_width(), surface.get_height()
+    stride = surface.get_stride()
+    data = bytes(surface.get_data())
+    little = __import__("sys").byteorder == "little"
+    out = bytearray(width * height * 4)
+    o = 0
+    for row in range(height):
+        base = row * stride
+        for col in range(width):
+            i = base + col * 4
+            if little:
+                b, g, r, a = data[i], data[i + 1], data[i + 2], data[i + 3]
+            else:
+                a, r, g, b = data[i], data[i + 1], data[i + 2], data[i + 3]
+            if a and a != 255:
+                r = min(255, (r * 255 + a // 2) // a)
+                g = min(255, (g * 255 + a // 2) // a)
+                b = min(255, (b * 255 + a // 2) // a)
+            out[o], out[o + 1], out[o + 2], out[o + 3] = a, r, g, b
+            o += 4
+    return bytes(out)
+
+
+_pixmap_cache = {}
+
+
+def pixmaps(state, kind=None, percent=None):
+    """[(size, size, ARGB bytes)] for every tray size; cached per appearance."""
+    if cairo is None:
+        return []
+    # The bolt's fill is quantised so a refresh only redraws on visible change.
+    level = None if kind else int(round(max(0.0, min(100.0, percent or 0.0)) / 5.0)) * 5
+    key = (state, kind, level)
+    cached = _pixmap_cache.get(key)
+    if cached is None:
+        rgb = STATE_COLORS.get(state, COLOR_GRAY)
+        cached = [(size, size, surface_to_argb(render_surface(size, rgb, kind, level)))
+                  for size in PIXMAP_SIZES]
+        if len(_pixmap_cache) > 64:
+            _pixmap_cache.clear()
+        _pixmap_cache[key] = cached
+    return cached
+
+
+def pixbuf(size, state, kind=None, percent=None):
+    """A GdkPixbuf for the XEmbed tray fallback, or None without cairo."""
+    surface = render_surface(size, STATE_COLORS.get(state, COLOR_GRAY), kind, percent)
+    if surface is None:
+        return None
+    from gi.repository import Gdk
+    return Gdk.pixbuf_get_from_surface(surface, 0, 0, size, size)
 
 
 def render_app_icon(size):
@@ -89,36 +165,11 @@ def render_app_icon(size):
     ctx.set_source_rgb(0.122, 0.118, 0.114)
     ctx.fill()
 
-    draw_bolt(ctx, size, (0.851, 0.467, 0.341),
-                   outer_scale=0.33, inner_scale=0.08, width_scale=0.085)
+    glyph = size * 0.62
+    ctx.translate((size - glyph) / 2.0, (size - glyph) / 2.0)
+    draw_bolt(ctx, glyph, (0.851, 0.467, 0.341), 1.0)
     surface.flush()
     return surface
-
-
-def icon_name(state, kind=None):
-    # type: (str, "str | None") -> str
-    return ICON_NAME_PREFIX + (kind + "-" if kind else "") + state
-
-
-def ensure_tray_icons(size=TRAY_SIZE):
-    # type: (int) -> "str | None"
-    """Render every glyph and colour state into the icon theme dir. Returns that dir."""
-    if cairo is None:
-        return None
-    ensure_dir(ICON_DIR)
-    for kind in (None,) + provider_mark.KINDS:
-        for state, rgb in STATE_COLORS.items():
-            # Always re-render: it costs microseconds and keeps an upgraded build
-            # from showing the previous version's cached artwork.
-            path = os.path.join(ICON_DIR, icon_name(state, kind) + ".png")
-            surface = render_surface(size, rgb, kind)
-            if surface is None:
-                return None
-            try:
-                surface.write_to_png(path)
-            except (OSError, IOError):
-                return None
-    return ICON_DIR
 
 
 def write_app_icon(path, size):

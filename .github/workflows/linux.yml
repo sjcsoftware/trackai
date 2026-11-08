@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y python3-gi python3-gi-cairo python3-cairo gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1 xvfb
+      - run: sudo apt-get update && sudo apt-get install -y python3-gi python3-gi-cairo python3-cairo gir1.2-gtk-3.0 xvfb
       - run: xvfb-run -a /usr/bin/python3 linux/scripts/smoke-ui.py /tmp/trackai-preview
       - run: ./linux/scripts/build.sh
       - name: Check committed Linux payload is current

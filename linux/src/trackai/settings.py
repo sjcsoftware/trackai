@@ -233,10 +233,13 @@ class Settings(object):
     @property
     def panel_alpha(self):
         # type: () -> float
-        """Background opacity for the stats panel (1.0 = fully opaque)."""
+        """Background opacity for the stats panel (1.0 = fully opaque).
+
+        Floors higher than macOS: most Linux compositors draw no blur behind a
+        translucent window, so the panel must stay readable on its own."""
         if self.opaque_background:
             return 1.0
-        return max(0.35, min(1.0, 1.0 - 0.6 * float(self.transparency)))
+        return max(0.55, min(1.0, 1.0 - 0.45 * float(self.transparency)))
 
     # -- launch at login ---------------------------------------------------
 
