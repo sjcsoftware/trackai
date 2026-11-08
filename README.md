@@ -7,7 +7,7 @@ Claude Code and Codex usage in your macOS menu bar or Linux system tray — one 
   <img src="screenshots/linux-overview.png" width="330" alt="Linux overview">
 </p>
 
-Native Swift + SwiftUI on macOS; Python + GTK 3 on Linux, adapted from [trackclaude](https://github.com/sjcsoftware/trackclaude). Linux support is verified on Ubuntu 24.04 and designed for Ubuntu 22.04+ and Debian derivatives.
+Native Swift + SwiftUI on macOS; Python + GTK 3 on Linux. Linux support is verified on Ubuntu 24.04 and designed for Ubuntu 22.04+ and Debian derivatives.
 
 ## Install
 
@@ -162,4 +162,4 @@ On macOS, implement `UsageProvider`, add a `ProviderKind` case and `ProviderMark
 
 ## Licence
 
-MIT © 2026 Cha Seungjoon. The Linux GTK foundation is adapted from [sjcsoftware/trackclaude](https://github.com/sjcsoftware/trackclaude), also MIT.
+MIT © 2026 Cha Seungjoon.
