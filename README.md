@@ -1,165 +1,125 @@
-# trackai
-
-Claude Code and Codex usage in your macOS menu bar or Linux system tray — one bolt, one panel, per-provider boxes. No credentials to copy or paste.
-
 <p align="center">
-  <img src="screenshots/overview.png" width="330" alt="macOS overview">
-  <img src="screenshots/linux-overview.png" width="330" alt="Linux overview">
+  <img src="screenshots/icon.png" width="128" height="128" alt="trackai icon">
 </p>
 
-Native Swift + SwiftUI on macOS; Python + GTK 3 on Linux. Linux support is verified on Ubuntu 24.04 and designed for Ubuntu 22.04+ and Debian derivatives.
+<h1 align="center">trackai</h1>
+
+<p align="center">
+  <img alt="macOS 13+" src="https://img.shields.io/badge/macOS-13%2B-black?logo=apple">
+  <img alt="Linux" src="https://img.shields.io/badge/Linux-Ubuntu%2022.04%2B-E95420?logo=ubuntu&logoColor=white">
+  <img alt="Claude Code" src="https://img.shields.io/badge/Claude%20Code-supported-D97757">
+  <img alt="Codex" src="https://img.shields.io/badge/Codex-supported-black">
+  <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue">
+</p>
+
+<p align="center">
+  <b>Claude Code and Codex usage in your menu bar.</b><br>
+  See how much of your session and weekly limits you have left, on macOS or Linux. Nothing to paste, no account to create.
+</p>
+
+<p align="center">
+  <img src="screenshots/linux-overview.png" alt="trackai overview: session, daily and weekly usage for Claude Code and Codex" width="340">
+  <img src="screenshots/linux-detailed.png" alt="trackai detailed page: plan limits, token usage and model breakdown" width="340">
+</p>
+
+## Table of contents
+
+- [Features](#features)
+- [Requirements](#requirements)
+- [Install](#install)
+- [Set up](#set-up)
+- [Use](#use)
+- [Commands](#commands)
+- [Troubleshooting](#troubleshooting)
+- [Privacy](#privacy)
+- [License](#license)
+
+> Building from source or contributing? See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Features
+
+- **Both tools in one panel.** Claude Code and Codex side by side, with each plan's 5-hour and weekly limits and when they reset.
+- **Read it at a glance.** The menu bar icon fills up and turns green, orange, then red as you use your limits. Follow a single provider and it shows that provider's logo instead.
+- **Overview or detail.** **Overview** shows your limits. **Detailed** adds token counts, estimated cost, and a per-model breakdown.
+- **Nothing to set up.** trackai reads the logins Claude Code and Codex already keep on your computer.
+- **Fits your desktop.** On Linux it follows your theme's colours and opens right under the tray icon, including in tiling window managers like i3.
+
+<p align="center">
+  <img src="screenshots/settings.png" alt="Settings: provider order, what the icon follows, colour thresholds" width="460"><br>
+  <sub>Choose what the icon follows and when it turns orange or red.</sub>
+</p>
+
+## Requirements
+
+- **macOS 13** or later (Apple Silicon or Intel), or **Linux** with a system tray (Ubuntu 22.04 or later; tested on 24.04)
+- **Claude Code** and/or **Codex**, logged in on this computer
 
 ## Install
 
-**The same command works on macOS and Linux.** The script detects the operating system and installs the matching build: macOS from `main`, Linux from the `linux-gtk` branch, where the GTK app is developed. Users do not need to select a branch, architecture, or build anything.
-
 ```sh
 curl -fsSL https://raw.githubusercontent.com/sjcsoftware/trackai/main/install.sh | bash
-trackai setup
 ```
 
-To update later, on either system:
+The same command works on macOS and Linux. On Linux it may ask for your password to install a few system packages.
+
+To update later:
 
 ```sh
 trackai update
 ```
 
-`update` goes through the same installer, so it also picks the right build for the operating system and restarts the app. Developers can pin a branch or tag with `TRACKAI_REF=<ref>`.
+## Set up
 
-Setup reads the logins the CLIs already keep on this machine. If neither tool is set up yet, run `claude` and/or `codex` in a terminal, log in, then run setup again. One provider is enough. TrackAI never refreshes, rewrites, or asks you to paste a credential.
+1. If you haven't yet, run `claude` and/or `codex` in a terminal and log in.
+2. Run `trackai setup`. It finds your logins and starts the app.
+3. Click the trackai icon in your menu bar or system tray.
 
-### macOS
+> **GNOME:** Ubuntu shows tray icons out of the box. On other GNOME desktops, install `gnome-shell-extension-appindicator`, then log out and back in.
 
-Requires macOS 13+. The installer downloads the prebuilt universal app for Apple Silicon and Intel, installs `/Applications/TrackAI.app`, and installs the CLI in a writable `/opt/homebrew/bin`, `/usr/local/bin`, or `~/.local/bin`.
+## Use
 
-### Linux (Ubuntu)
+| Do this | To |
+| --- | --- |
+| Click the icon | Open the panel |
+| Click **Overview** / **Detailed** | Switch between limits and the full breakdown |
+| Click ⟳ | Refresh now |
+| Click ⚙ | Open Settings |
+| Click anywhere else (or press <kbd>Esc</kbd> on Linux) | Close the panel |
 
-Requires Python 3.8+ and a graphical desktop for the tray. Nothing is compiled. The installer uses the system Python (`/usr/bin/python3`) and installs missing Ubuntu/Debian packages with `apt`:
+In **Settings** you can:
 
-- `python3`, `python3-gi`, `python3-gi-cairo`, `python3-cairo`
-- `gir1.2-gtk-3.0`
-
-Only installing missing system packages requires sudo. Run the installer as your normal desktop user. The app, launcher, and preferences live in your home directory:
-
-| Path | Contents |
-|---|---|
-| `~/.local/share/trackai/` | Python application |
-| `~/.local/bin/trackai` | Linux CLI |
-| `~/.local/share/applications/trackai.desktop` | Desktop launcher |
-| `~/.config/trackai/settings.json` | Preferences |
-| `~/.cache/trackai/` | Limit cache, PID, and log |
-| `~/.config/autostart/trackai.desktop` | Optional launch-at-login entry |
-
-The standard `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, and `XDG_CACHE_HOME` overrides are respected. If `~/.local/bin` is missing from your shell's PATH, add `export PATH="$HOME/.local/bin:$PATH"` to your shell configuration, or use the full CLI path printed by the installer.
-
-The tray icon is a StatusNotifierItem, the protocol KDE, the GNOME AppIndicator extension, waybar, eww, polybar and xfce4-panel all host. Trays without it (i3bar, stalonetray, older panels) get a classic XEmbed icon instead; if a StatusNotifierItem tray starts later, the icon moves to it.
-
-Click the icon to open the panel, then switch between **Overview** and **Detailed**. The panel stays open until you press Escape or click anywhere outside it. The icon has no hover tooltip.
-
-On X11 the panel is an override-redirect window, so tiling window managers such as i3 never tile or move it. It opens beside the bar you clicked in (below a top bar, above a bottom bar), even when the bar reserves no screen space. Its colours follow your GTK theme's accent and light or dark mode. On Wayland the compositor decides where windows go, so the panel closes when it loses focus instead.
-
-Ubuntu's GNOME desktop includes the AppIndicator extension that hosts the icon. On stock GNOME, install `gnome-shell-extension-appindicator`, then log out and back in.
-
-On other distributions, the installer checks the same bindings and prints equivalent Fedora/Arch package commands if they are missing. Those distributions are not yet verified. `trackai stats` runs without GTK or a display, including over SSH.
-
-## What it shows
-
-**Overview** shows one box per provider:
-
-- **Session** — the plan's rolling limit and reset time, when available.
-- **Daily** — today's tokens and estimated cost, relative to the busiest day in the last 30. A percentage appears only after at least three active days provide a baseline.
-- **Weekly** — the provider's weekly plan limit, or local seven-day usage relative to the busiest recent week when no plan limit is available.
-
-**Detailed** shows every reported plan window, local token totals for today / five hours / seven days / 30 days / all time, a 30-day input/output/cache split and model breakdown, and the account, plan, and observation time.
-
-Codex has no daily limit, so its box has no Daily row; when the icon follows daily usage, Codex contributes its 5-hour limit instead. Additional Claude config directories appear as separate account boxes on Linux.
-
-## Settings
-
-Use the gear in the panel:
-
-- Enable providers, change their order, add Claude config directories, and override `CODEX_HOME`.
-- Choose daily, session, or weekly usage for the icon; combine selected providers by average or highest usage, or select one account/provider.
-- Show the percentage next to the icon; adjust the orange/red thresholds (50% / 80% by default).
-- Adjust transparency, select an opaque background, set the refresh interval, and enable launch at login.
-- macOS: "Skip the Keychain password prompt" (on by default) reads Claude Code's login through Apple's `security` tool, which Claude Code itself saves it with. Turned off, trackai reads the Keychain directly and macOS asks for your login password again after every update.
-
-On macOS, drag provider logos to reorder them; Linux uses up/down buttons. On both, the icon is a bolt that fills with usage, or the provider's own mark when **Single account** or **Highest** picks one provider. macOS has native background blur; on Linux, blur depends on the compositor. The percentage next to the icon appears only in trays that support text labels (GNOME, Ayatana).
-
-## Where the numbers come from
-
-| | Claude Code | Codex |
-|---|---|---|
-| Login | `~/.claude/.credentials.json`, with read-only Keychain fallback on macOS (through Apple's `security` tool, so no password prompt) or `secret-tool` on Linux | `~/.codex/auth.json`; JWT claims carry the account and plan |
-| Tokens | `~/.claude/projects/**/*.jsonl` assistant records | `~/.codex/sessions/**/*.jsonl`; new `token_usage_record` entries or older `token_count` deltas |
-| Plan limits | Anthropic's OAuth usage endpoint | `rate_limits` snapshots in the CLI's rollout logs |
-
-`CLAUDE_CONFIG_DIR` and `CODEX_HOME` are respected, with additional paths available in settings. For Linux's optional Secret Service fallback, install `libsecret-tools` if your Claude login is stored there.
-
-Claude's limits are fetched at most every five minutes, with a one-minute manual-refresh floor, persisted cache, and exponential HTTP 429 back-off. On Linux the CLI and tray share the cache and back-off across processes and restarts.
-
-**Codex makes no network requests.** Its limits only advance when Codex writes another snapshot. Every panel shows when the limits were observed, and snapshots older than six hours explicitly say they came from the last Codex run. Expired reset times do not turn old snapshots into live data.
-
-Costs are API-equivalent estimates using the same pricing tables as the Mac implementation. Subscription users are not billed per token; these estimates are not subscription charges. Local transcripts are never uploaded. The only runtime network request is Claude's read-only usage lookup; installation and updates download from GitHub.
+- turn Claude Code or Codex on and off, and change their order
+- choose what the icon follows: the session, weekly, or daily usage of one provider, or the average or highest across them
+- set when the icon turns orange and red (50% and 80% by default)
+- adjust the panel's transparency, the refresh interval, and launch at login
+- add a second Claude account by pointing trackai at its config folder
 
 ## Commands
 
-```text
-trackai setup       Check existing CLI logins and start the app
-trackai start       Start the app
-trackai stop        Quit the app
-trackai restart     Restart the app
-trackai status      Report whether the app is running
-trackai update      Download the matching platform version and restart
-trackai stats       Print usage stats as JSON
-trackai logs        Show log output (or macOS system-log instructions)
-trackai uninstall   Remove the app and CLI; keep preferences
-```
+| Command | Does |
+| --- | --- |
+| `trackai setup` | Find your logins and start the app |
+| `trackai start` / `stop` / `restart` | Control the app |
+| `trackai status` | Check whether it is running |
+| `trackai update` | Install the latest version and restart |
+| `trackai stats` | Print your usage as JSON (works over SSH) |
+| `trackai logs` | Show recent log output |
+| `trackai uninstall` | Remove trackai and keep your settings |
 
-Linux also supports `trackai stats --offline` to skip the Claude endpoint and `trackai logs 100` to choose the number of log lines. JSON has a `providers` array:
+## Troubleshooting
 
-```sh
-trackai stats --offline | python3 -c 'import json,sys; print([(p["provider"], p["local"]["today"]["total"]) for p in json.load(sys.stdin)["providers"]])'
-```
+- **No icon on GNOME.** Install `gnome-shell-extension-appindicator`, then log out and back in.
+- **`trackai: command not found`.** Add `~/.local/bin` to your `PATH`, or use the full path the installer printed.
+- **Claude shows "login expired".** Run `claude` in a terminal and log in again. Codex keeps working on its own.
+- **Codex limits look old.** They update the next time you use Codex. The panel shows when they were last seen.
+- **Anything else.** Run `trackai logs` and [open an issue](https://github.com/sjcsoftware/trackai/issues).
 
-If startup fails on Linux, `trackai logs` shows the error. An expired Claude login is repaired by running `claude` and logging in again. Codex can continue working independently.
+## Privacy
 
-## Build and run from source
+- trackai reads Claude Code's and Codex's files on your computer and never uploads them.
+- Its only network request is Claude's read-only usage check, at most every five minutes. Codex makes none.
+- Costs are estimates at API prices. Subscriptions are not billed per token.
 
-```sh
-git clone https://github.com/sjcsoftware/trackai
-cd trackai
-./install.sh                 # installs directly from this checkout for your OS
-```
+## License
 
-Linux:
-
-```sh
-./linux/bin/trackai stats --offline
-./linux/bin/trackai start
-./linux/scripts/build.sh     # tests + reproducible dist/trackai-linux.tar.gz
-python3 -m unittest discover -s linux/tests -v
-/usr/bin/python3 linux/scripts/smoke-ui.py /tmp/trackai-preview
-```
-
-The core tests need only Python's standard library. The GTK smoke check uses synthetic data, opens the overview/detail/settings windows, checks controls, and saves screenshots. On a headless desktop test runner, prefix it with `xvfb-run -a`. `TRACKAI_HOME` can override the Python package parent directory and `TRACKAI_PYTHON` can override the interpreter; GTK must be available to that interpreter.
-
-macOS (Xcode Command Line Tools required):
-
-```sh
-./scripts/build.sh          # universal dist/TrackAI.app + dist/TrackAI.zip
-./trackai                   # run the built app
-./trackai --render out.png [--detailed|--settings]
-```
-
-Both payloads are committed under `dist/` for the installer's downloads. Rebuild the Linux archive after changing Linux source, launcher, installer, or packaged documentation. Changes to `bin/trackai` require rebuilding the signed Mac app/archive on macOS, because that launcher is embedded inside the bundle. Linux's separate `linux/bin/trackai` does not change the Mac signature.
-
-For development only, `TRACKAI_REF` can explicitly select a branch or tag. It is never required for a normal installation, and an explicit ref never falls back to a different release.
-
-## Adding a provider
-
-On macOS, implement `UsageProvider`, add a `ProviderKind` case and `ProviderMark` glyph, then register it in `ProviderRegistry.all`. On Linux, implement a provider returning `ProviderSnapshot` objects, add it to `PROVIDERS` in `linux/src/trackai/providers.py`, add its outline to `linux/src/trackai/provider_mark.py`, and include its key in the settings defaults. The panels and settings consume the registry; scans run in a background thread.
-
-## Licence
-
-MIT © 2026 Cha Seungjoon.
+MIT © 2026 Cha Seungjoon. See [LICENSE](LICENSE).
