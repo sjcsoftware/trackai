@@ -132,18 +132,19 @@ class TrayApp(object):
         percent = self.state.icon_percent()
         state = self.settings.usage_color_name(percent) if percent is not None else "gray"
         kind = self.state.icon_kind()
-        label = ""
+        # Drawn into the icon rather than sent as an SNI label: most hosts
+        # (eww, KDE, waybar, XEmbed) never show labels.
+        text = None
         if self.settings.show_percent_in_menu_bar and percent is not None:
-            label = "{:.0f}%".format(percent)
+            text = status_icon.percent_text(percent)
 
-        self.item.set_icon(status_icon.pixmaps(state, kind, percent))
-        self.item.set_label(label, "100%")
+        self.item.set_icon(status_icon.pixmaps(state, kind, percent, text))
 
         if self._xembed is not None:
             level = None if kind else int(round((percent or 0) / 5.0)) * 5
-            appearance = (state, kind, level, self._xembed_size)
+            appearance = (state, kind, level, text, self._xembed_size)
             if appearance != self._appearance:
-                pixbuf = status_icon.pixbuf(self._xembed_size, state, kind, level)
+                pixbuf = status_icon.pixbuf(self._xembed_size, state, kind, level, text)
                 if pixbuf is not None:
                     self._xembed.set_from_pixbuf(pixbuf)
                 else:

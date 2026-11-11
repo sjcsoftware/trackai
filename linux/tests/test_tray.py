@@ -61,6 +61,26 @@ class PixmapTests(unittest.TestCase):
         self.assertIs(self.icon.pixmaps("orange", None, 61), self.icon.pixmaps("orange", None, 59))
         self.assertIsNot(self.icon.pixmaps("orange", None, 20), self.icon.pixmaps("orange", None, 80))
 
+    def test_percentage_is_drawn_into_the_square_icon(self):
+        # eww, KDE, waybar and XEmbed show no SNI label, so the number must be
+        # in the pixmap itself, and the pixmap must stay square.
+        plain = self.icon.pixmaps("green", "codex", 42)
+        shown = self.icon.pixmaps("green", "codex", 42, self.icon.percent_text(42))
+        other = self.icon.pixmaps("green", "codex", 42, self.icon.percent_text(43))
+        for maps in (shown, other):
+            self.assertTrue(all(w == h for w, h, _ in maps))
+        self.assertNotEqual([m[2] for m in plain], [m[2] for m in shown])
+        self.assertNotEqual([m[2] for m in shown], [m[2] for m in other])
+        # The number fills the lower half, where the plain glyph leaves rows empty.
+        size, _, data = shown[-1]
+        lower = data[size * 4 * (size * 3 // 4):]
+        self.assertTrue(any(lower[i] for i in range(0, len(lower), 4)))
+
+    def test_percent_text(self):
+        self.assertEqual(self.icon.percent_text(7.4), "7")
+        self.assertEqual(self.icon.percent_text(99.6), "100")
+        self.assertEqual(self.icon.percent_text(-3), "0")
+
 
 if __name__ == "__main__":
     unittest.main()

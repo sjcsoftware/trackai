@@ -101,7 +101,7 @@ class SettingsWindow(Gtk.Window):
         self.percent_switch = Gtk.Switch()
         self.percent_switch.set_active(self.settings.show_percent_in_menu_bar)
         self.percent_switch.connect("notify::active", self._on_percent_toggled)
-        box.pack_start(_row("Show percentage next to icon", self.percent_switch), False, False, 0)
+        box.pack_start(_row("Show percentage on the icon", self.percent_switch), False, False, 0)
         box.pack_start(_hint("Only trays that support text labels show it (GNOME, Ayatana)."),
                        False, False, 0)
 

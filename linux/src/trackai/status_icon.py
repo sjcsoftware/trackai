@@ -5,6 +5,11 @@ usage climbs; a single or highest reading shows that provider's own mark.
 Everything is drawn with cairo, then handed to the tray either as
 StatusNotifierItem pixmaps or as a pixbuf for the legacy XEmbed tray, so no
 icon files are written or looked up in a theme.
+
+"Show percentage next to icon" is drawn into the icon as well: the glyph moves
+up and the number sits under it. Tray hosts disagree on labels (eww, KDE,
+waybar and XEmbed show none; eww also squeezes any pixmap into a square), so
+the square icon is the only place every host will show it.
 """
 
 from __future__ import annotations
@@ -68,8 +73,7 @@ def draw_bolt(ctx, size, rgb, level=1.0, **_kwargs):
     ctx.restore()
 
 
-def draw_icon(ctx, size, rgb, kind=None, percent=None):
-    """The bolt gauge, or ``kind``'s mark inset to the bolt's optical height."""
+def _draw_glyph(ctx, size, rgb, kind, percent):
     if kind is None:
         draw_bolt(ctx, size, rgb, (percent or 0.0) / 100.0)
     else:
@@ -77,13 +81,51 @@ def draw_icon(ctx, size, rgb, kind=None, percent=None):
         provider_mark.draw_mark(ctx, kind, size - inset * 2, rgb, inset, inset)
 
 
-def render_surface(size, rgb, kind=None, percent=None):
+def _draw_text(ctx, text, rgb, x, y, w, h):
+    """``text`` in bold, as large as fits the (x, y, w, h) box, centred."""
+    ctx.save()
+    ctx.select_font_face("Inter", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
+    ctx.set_font_size(h)
+    ext = ctx.text_extents(text)
+    if ext.width > 0 and ext.height > 0:
+        ctx.set_font_size(max(1.0, h * min(w / ext.width, h / ext.height)))
+        ext = ctx.text_extents(text)
+    ctx.move_to(round(x + (w - ext.width) / 2.0 - ext.x_bearing),
+                round(y + (h - ext.height) / 2.0 - ext.y_bearing))
+    ctx.set_source_rgb(*rgb)
+    ctx.show_text(text)
+    ctx.restore()
+
+
+def percent_text(percent):
+    # type: (object) -> str
+    """The number drawn under the glyph; "%" would not fit a 16px icon."""
+    return "{:.0f}".format(max(0.0, min(999.0, float(percent))))
+
+
+def draw_icon(ctx, size, rgb, kind=None, percent=None, text=None):
+    """The bolt gauge, or ``kind``'s mark inset to the bolt's optical height.
+
+    With ``text`` the glyph shrinks into the top half and the text fills the
+    bottom, so the reading shows even on hosts that ignore labels."""
+    if not text:
+        _draw_glyph(ctx, size, rgb, kind, percent)
+        return
+    glyph = size * 0.48
+    ctx.save()
+    ctx.translate((size - glyph) / 2.0, 0)
+    _draw_glyph(ctx, glyph, rgb, kind, percent)
+    ctx.restore()
+    _draw_text(ctx, text, rgb, 0, size * 0.54, size, size * 0.46)
+
+
+def render_surface(size, rgb, kind=None, percent=None, text=None):
     """A transparent square surface holding the bolt gauge or a provider mark."""
     if cairo is None:
         return None
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, size, size)
     ctx = cairo.Context(surface)
-    draw_icon(ctx, size, rgb, kind, percent)
+    draw_icon(ctx, size, rgb, kind, percent, text)
     surface.flush()
     return surface
 
@@ -118,17 +160,17 @@ def surface_to_argb(surface):
 _pixmap_cache = {}
 
 
-def pixmaps(state, kind=None, percent=None):
+def pixmaps(state, kind=None, percent=None, text=None):
     """[(size, size, ARGB bytes)] for every tray size; cached per appearance."""
     if cairo is None:
         return []
     # The bolt's fill is quantised so a refresh only redraws on visible change.
     level = None if kind else int(round(max(0.0, min(100.0, percent or 0.0)) / 5.0)) * 5
-    key = (state, kind, level)
+    key = (state, kind, level, text or None)
     cached = _pixmap_cache.get(key)
     if cached is None:
         rgb = STATE_COLORS.get(state, COLOR_GRAY)
-        cached = [(size, size, surface_to_argb(render_surface(size, rgb, kind, level)))
+        cached = [(size, size, surface_to_argb(render_surface(size, rgb, kind, level, text)))
                   for size in PIXMAP_SIZES]
         if len(_pixmap_cache) > 64:
             _pixmap_cache.clear()
@@ -136,9 +178,9 @@ def pixmaps(state, kind=None, percent=None):
     return cached
 
 
-def pixbuf(size, state, kind=None, percent=None):
+def pixbuf(size, state, kind=None, percent=None, text=None):
     """A GdkPixbuf for the XEmbed tray fallback, or None without cairo."""
-    surface = render_surface(size, STATE_COLORS.get(state, COLOR_GRAY), kind, percent)
+    surface = render_surface(size, STATE_COLORS.get(state, COLOR_GRAY), kind, percent, text)
     if surface is None:
         return None
     from gi.repository import Gdk
