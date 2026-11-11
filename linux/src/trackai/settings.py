@@ -68,6 +68,8 @@ DEFAULTS = {
     "iconMode": "average",
     "refreshInterval": 120.0,
     "showPercentInMenuBar": False,
+    # "under" fits any tray; "beside" needs one that keeps wide icons.
+    "percentPlacement": "under",
     "launchAtLogin": False,
 }
 
@@ -218,6 +220,7 @@ class Settings(object):
     extra_config_dirs = _field("extraConfigDirs")
     refresh_interval = _field("refreshInterval")
     show_percent_in_menu_bar = _field("showPercentInMenuBar")
+    percent_placement = _field("percentPlacement")
     launch_at_login = _field("launchAtLogin")
 
     # -- derived -----------------------------------------------------------

@@ -76,7 +76,24 @@ class PixmapTests(unittest.TestCase):
         lower = data[size * 4 * (size * 3 // 4):]
         self.assertTrue(any(lower[i] for i in range(0, len(lower), 4)))
 
+    def test_beside_is_one_wide_pixmap_per_height(self):
+        # A host that keeps the aspect ratio (eww with height-scaled pixmaps)
+        # shows the full-size glyph with the number to its right.
+        maps = self.icon.pixmaps("orange", "claude", 64, "64%", beside=True)
+        self.assertEqual([m[1] for m in maps], list(self.icon.PIXMAP_SIZES))
+        for width, height, data in maps:
+            self.assertGreater(width, height * 2)
+            self.assertEqual(len(data), width * height * 4)
+        # Digits share one slot width, so the icon does not wobble as the value
+        # changes, only when the digit count does.
+        width = lambda text: self.icon.pixmaps("orange", "claude", 64, text, beside=True)[1][0]
+        self.assertEqual(width("11%"), width("88%"))
+        self.assertLess(width("8%"), width("88%"))
+        # The square layout is kept without text.
+        self.assertTrue(all(w == h for w, h, _ in self.icon.pixmaps("orange", "claude", 64, None, beside=True)))
+
     def test_percent_text(self):
+        self.assertEqual(self.icon.percent_text(64.2, sign=True), "64%")
         self.assertEqual(self.icon.percent_text(7.4), "7")
         self.assertEqual(self.icon.percent_text(99.6), "100")
         self.assertEqual(self.icon.percent_text(-3), "0")

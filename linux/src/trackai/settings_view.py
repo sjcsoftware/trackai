@@ -102,8 +102,17 @@ class SettingsWindow(Gtk.Window):
         self.percent_switch.set_active(self.settings.show_percent_in_menu_bar)
         self.percent_switch.connect("notify::active", self._on_percent_toggled)
         box.pack_start(_row("Show percentage on the icon", self.percent_switch), False, False, 0)
-        box.pack_start(_hint("Only trays that support text labels show it (GNOME, Ayatana)."),
-                       False, False, 0)
+        self.placement_combo = Gtk.ComboBoxText()
+        for key, title in (("under", "Under the icon"), ("beside", "Beside the icon")):
+            self.placement_combo.append(key, title)
+        self.placement_combo.set_active_id(
+            "beside" if self.settings.percent_placement == "beside" else "under")
+        self.placement_combo.connect("changed", self._on_placement_changed)
+        self.placement_row = _row("Percentage position", self.placement_combo)
+        self.placement_row.set_sensitive(self.settings.show_percent_in_menu_bar)
+        box.pack_start(self.placement_row, False, False, 0)
+        box.pack_start(_hint("Beside needs a tray that keeps wide icons; "
+                             "most trays shrink them to a square."), False, False, 0)
 
         mode = Gtk.ComboBoxText()
         for key, title in (("average", "Average"), ("highest", "Highest"), ("single", "Single account")):
@@ -330,6 +339,12 @@ class SettingsWindow(Gtk.Window):
         if self._loading:
             return
         self.settings.show_percent_in_menu_bar = switch.get_active()
+        self.placement_row.set_sensitive(switch.get_active())
+
+    def _on_placement_changed(self, combo):
+        if self._loading:
+            return
+        self.settings.percent_placement = combo.get_active_id() or "under"
 
     def _on_account_changed(self, combo):
         if self._loading:

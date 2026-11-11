@@ -162,9 +162,13 @@ only if Google exposes a quota endpoint that a consumer token can actually call.
    could not keep up with live numbers). Re-register whenever
    `org.kde.StatusNotifierWatcher` reappears (bars restart). With no watcher
    on X11, fall back to `Gtk.StatusIcon` (XEmbed), also without a tooltip.
-   "Show percentage" is drawn into the square icon (glyph on top, number
-   below), never sent as `XAyatanaLabel`: eww, KDE, waybar and XEmbed show no
-   label, and eww scales every pixmap to a square.
+   "Show percentage" is drawn into the icon, never sent as `XAyatanaLabel`
+   (eww, KDE, waybar and XEmbed show no label). `percentPlacement` "under"
+   (default) keeps it square, glyph on top and number below, which fits any
+   host. "beside" sends one wide pixmap per height (full-size glyph + "64%",
+   digits in equal slots so only the digit count changes the width); it needs a
+   host that scales pixmaps by height, which stock eww 0.6 does not (it
+   squares every pixmap). XEmbed always uses "under".
 9. **The panel is an override-redirect popup on X11** with a pointer+keyboard
    seat grab: only Escape or an outside click closes it. Placement uses the
    rect of the top-level window under the click (the bar), because i3 and many

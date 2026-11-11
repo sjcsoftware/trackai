@@ -6,10 +6,12 @@ Everything is drawn with cairo, then handed to the tray either as
 StatusNotifierItem pixmaps or as a pixbuf for the legacy XEmbed tray, so no
 icon files are written or looked up in a theme.
 
-"Show percentage next to icon" is drawn into the icon as well: the glyph moves
-up and the number sits under it. Tray hosts disagree on labels (eww, KDE,
-waybar and XEmbed show none; eww also squeezes any pixmap into a square), so
-the square icon is the only place every host will show it.
+"Show percentage" is drawn into the icon as well, because tray hosts disagree
+on labels (eww, KDE, waybar and XEmbed show none). "Under" keeps the icon
+square: the glyph moves up and the number sits below it, which every host can
+show. "Beside" draws the full-size glyph with "64%" to its right as one wide
+pixmap, for hosts that keep a pixmap's aspect ratio; hosts that force icons
+square would shrink or squeeze it.
 """
 
 from __future__ import annotations
@@ -97,10 +99,11 @@ def _draw_text(ctx, text, rgb, x, y, w, h):
     ctx.restore()
 
 
-def percent_text(percent):
-    # type: (object) -> str
-    """The number drawn under the glyph; "%" would not fit a 16px icon."""
-    return "{:.0f}".format(max(0.0, min(999.0, float(percent))))
+def percent_text(percent, sign=False):
+    # type: (object, bool) -> str
+    """The number drawn on the icon; "%" only fits beside it, not under it."""
+    text = "{:.0f}".format(max(0.0, min(999.0, float(percent))))
+    return text + "%" if sign else text
 
 
 def draw_icon(ctx, size, rgb, kind=None, percent=None, text=None):
@@ -119,6 +122,48 @@ def draw_icon(ctx, size, rgb, kind=None, percent=None, text=None):
     _draw_text(ctx, text, rgb, 0, size * 0.54, size, size * 0.46)
 
 
+# "Beside": digits as tall as this share of the icon, after a gap of this share.
+BESIDE_DIGIT_HEIGHT = 0.5
+BESIDE_GAP = 0.2
+
+
+def _beside_layout(ctx, height, text):
+    """Select the font and return [(char, slot width)]. Every digit gets the
+    widest digit's slot, so the icon only changes width with the digit count."""
+    ctx.select_font_face("Inter", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
+    ctx.set_font_size(height)
+    zero = ctx.text_extents("0")
+    if zero.height > 0:
+        ctx.set_font_size(height * height * BESIDE_DIGIT_HEIGHT / zero.height)
+    digit = max(ctx.text_extents(d).x_advance for d in "0123456789")
+    return [(ch, digit if ch.isdigit() else ctx.text_extents(ch).x_advance) for ch in text]
+
+
+def beside_width(height, text):
+    # type: (int, str) -> int
+    """Pixel width of the "beside" icon at ``height``."""
+    surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1, 1)
+    slots = _beside_layout(cairo.Context(surface), height, text)
+    return int(math.ceil(height * (1.0 + BESIDE_GAP) + sum(w for _, w in slots)))
+
+
+def draw_beside(ctx, height, rgb, kind, percent, text):
+    """The full-size glyph with ``text`` to its right, vertically centred."""
+    _draw_glyph(ctx, height, rgb, kind, percent)
+    ctx.save()
+    slots = _beside_layout(ctx, height, text)
+    digit_height = ctx.text_extents("0").height
+    baseline = round((height + digit_height) / 2.0)
+    x = height * (1.0 + BESIDE_GAP)
+    ctx.set_source_rgb(*rgb)
+    for ch, width in slots:
+        ext = ctx.text_extents(ch)
+        ctx.move_to(round(x + (width - ext.x_advance) / 2.0), baseline)
+        ctx.show_text(ch)
+        x += width
+    ctx.restore()
+
+
 def render_surface(size, rgb, kind=None, percent=None, text=None):
     """A transparent square surface holding the bolt gauge or a provider mark."""
     if cairo is None:
@@ -126,6 +171,17 @@ def render_surface(size, rgb, kind=None, percent=None, text=None):
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, size, size)
     ctx = cairo.Context(surface)
     draw_icon(ctx, size, rgb, kind, percent, text)
+    surface.flush()
+    return surface
+
+
+def render_beside_surface(height, rgb, kind=None, percent=None, text=""):
+    """A transparent wide surface: the glyph with ``text`` beside it."""
+    if cairo is None:
+        return None
+    surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, beside_width(height, text), height)
+    ctx = cairo.Context(surface)
+    draw_beside(ctx, height, rgb, kind, percent, text)
     surface.flush()
     return surface
 
@@ -160,18 +216,26 @@ def surface_to_argb(surface):
 _pixmap_cache = {}
 
 
-def pixmaps(state, kind=None, percent=None, text=None):
-    """[(size, size, ARGB bytes)] for every tray size; cached per appearance."""
+def pixmaps(state, kind=None, percent=None, text=None, beside=False):
+    """[(width, height, ARGB bytes)] for every tray size; cached per appearance.
+
+    Square unless ``beside`` and ``text`` ask for the wide "beside" layout."""
     if cairo is None:
         return []
     # The bolt's fill is quantised so a refresh only redraws on visible change.
     level = None if kind else int(round(max(0.0, min(100.0, percent or 0.0)) / 5.0)) * 5
-    key = (state, kind, level, text or None)
+    beside = bool(beside and text)
+    key = (state, kind, level, text or None, beside)
     cached = _pixmap_cache.get(key)
     if cached is None:
         rgb = STATE_COLORS.get(state, COLOR_GRAY)
-        cached = [(size, size, surface_to_argb(render_surface(size, rgb, kind, level, text)))
-                  for size in PIXMAP_SIZES]
+        cached = []
+        for size in PIXMAP_SIZES:
+            if beside:
+                surface = render_beside_surface(size, rgb, kind, level, text)
+            else:
+                surface = render_surface(size, rgb, kind, level, text)
+            cached.append((surface.get_width(), size, surface_to_argb(surface)))
         if len(_pixmap_cache) > 64:
             _pixmap_cache.clear()
         _pixmap_cache[key] = cached

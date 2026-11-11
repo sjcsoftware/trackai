@@ -134,11 +134,13 @@ class TrayApp(object):
         kind = self.state.icon_kind()
         # Drawn into the icon rather than sent as an SNI label: most hosts
         # (eww, KDE, waybar, XEmbed) never show labels.
-        text = None
-        if self.settings.show_percent_in_menu_bar and percent is not None:
-            text = status_icon.percent_text(percent)
-
-        self.item.set_icon(status_icon.pixmaps(state, kind, percent, text))
+        show = self.settings.show_percent_in_menu_bar and percent is not None
+        beside = self.settings.percent_placement == "beside"
+        self.item.set_icon(status_icon.pixmaps(
+            state, kind, percent,
+            status_icon.percent_text(percent, sign=beside) if show else None, beside))
+        # The XEmbed tray only holds square icons, so it always puts it under.
+        text = status_icon.percent_text(percent) if show else None
 
         if self._xembed is not None:
             level = None if kind else int(round((percent or 0) / 5.0)) * 5
