@@ -68,7 +68,7 @@ dist/trackai-linux.tar.gz     Linux payload; installer selects by uname
    `ProviderKind` case, a `ProviderMark` glyph, and a `ProviderRegistry` entry.
    Nothing in the views or settings should need a per-provider branch beyond
    copy. Keep it that way. `ProviderKind` describes each provider
-   (`primaryLimitGroup`/`primaryName`, `tracksDailyUsage`, `costIsEstimate`,
+   (`primaryLimitGroup`/`primaryName`, `costIsEstimate`,
    `command`, `prettyModelName`), snapshots carry the per-plan `hasWeekly`, and
    `LimitInfo.detail` holds an optional figure. `Settings` enables new kinds once
    through the `knownProviders` marker, because `providerOrder` is only stored
@@ -83,8 +83,7 @@ dist/trackai-linux.tar.gz     Linux payload; installer selects by uname
    `kSecUseAuthenticationUI`) and floats `KeychainPromptHint` only while the
    real dialog is up. Linux reads files or Secret Service and has no equivalent.
 12. **Copilot has only a monthly allowance.** `primaryLimitGroup` is `"monthly"`
-    and it has no daily window, so the overview leads with it and the "session"
-    and "daily" metrics read it (Codex's "daily" reads its 5h limit the same way).
+    and the overview leads with it and the "session" metric reads it.
     Token-based (AI credit) plans also set `hasWeekly = false`: no local Weekly
     row, and "weekly" reads the monthly limit. Premium-request plans, or an
     unknown plan, keep the local Weekly row. The quota comes from
@@ -98,6 +97,11 @@ dist/trackai-linux.tar.gz     Linux payload; installer selects by uname
     trusted and a read through it raises a dialog on every poll. `CopilotAuth`
     reads the item with interaction off and otherwise falls through to
     `gh auth token`, then the labelled cache. Do not turn that read interactive.
+14. **No provider has a daily limit.** Claude Code's plans have only the 5-hour
+    session and weekly windows, Codex 5h and weekly, Copilot a monthly
+    allowance. There is no Daily row and no "daily" icon metric; a stored
+    `menuBarMetric`/`colorMetric` of `"daily"` falls back to the session limit.
+    Today's token count stays a plain local stat on the detailed page.
 
 ## Data formats relied on
 
@@ -190,8 +194,8 @@ only if Google exposes a quota endpoint that a consumer token can actually call.
    rect of the top-level window under the click (the bar), because i3 and many
    bars set no `_NET_WORKAREA`/struts. Wayland keeps an undecorated top-level.
    Never style per desktop: colours come from the GTK theme accent.
-10. **Codex has no daily limit.** Its snapshots set `has_daily = False`: no
-    Daily row in the panel, and the "daily" icon metric reads its 5h limit.
+10. **No daily limit on Linux either** (see invariant 14): the panel has no
+    Daily row and the icon has no "daily" metric, for every provider.
 
 ## Linux verification
 

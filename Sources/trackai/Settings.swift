@@ -3,8 +3,9 @@ import SwiftUI
 import ServiceManagement
 
 /// Which number the menu bar (and the overview bars) reports.
+/// There is no daily metric: none of the providers has a daily limit. A stored
+/// "daily" from an older version falls back to the session limit.
 enum UsageMetric: String, CaseIterable, Identifiable, Codable {
-    case daily
     case weekly
     case session
 
@@ -12,7 +13,6 @@ enum UsageMetric: String, CaseIterable, Identifiable, Codable {
 
     var label: String {
         switch self {
-        case .daily: return "Daily usage"
         case .weekly: return "Weekly limit"
         case .session: return "Session (5h) limit · Copilot: monthly"
         }
@@ -20,7 +20,6 @@ enum UsageMetric: String, CaseIterable, Identifiable, Codable {
 
     var shortLabel: String {
         switch self {
-        case .daily: return "Daily"
         case .weekly: return "Weekly"
         case .session: return "Session"
         }
@@ -126,7 +125,7 @@ final class Settings: ObservableObject {
         enabledProviders = storedSelection("enabledProviders")
 
         menuBarMode = MenuBarMode(rawValue: d.string(forKey: "menuBarMode") ?? "") ?? .average
-        menuBarMetric = UsageMetric(rawValue: d.string(forKey: "menuBarMetric") ?? "") ?? .daily
+        menuBarMetric = UsageMetric(rawValue: d.string(forKey: "menuBarMetric") ?? "") ?? .session
         menuBarProviders = storedSelection("menuBarProviders")
         menuBarSingleProvider = ProviderKind(rawValue: d.string(forKey: "menuBarSingleProvider") ?? "") ?? .claude
         showPercentInMenuBar = d.object(forKey: "showPercentInMenuBar") as? Bool ?? true

@@ -48,20 +48,8 @@ struct LocalStats {
     var allTime = TokenTotals()
     var perModel: [ModelStats] = []       // all time, busiest first
     var perModel30d: [ModelStats] = []    // last 30 days, busiest first
-    var dailyPeak30 = 0                   // busiest single day (tokens) in last 30 days
     var weeklyPeak12 = 0                  // busiest rolling week proxy: peak 7-day block in 90 days
-    var activeDays30 = 0                  // days with any usage in the last 30
     var scannedAt = Date()
-
-    /// Comparing today against a peak only means something once there are a few
-    /// days to compare with; a single day of history always reads as 100%.
-    var hasDailyBaseline: Bool { activeDays30 >= 3 && dailyPeak30 > 0 }
-
-    /// Today's tokens relative to the busiest day of the last 30 days (0-100).
-    var dailyRelativePercent: Double {
-        guard dailyPeak30 > 0 else { return 0 }
-        return min(100, Double(today.total) / Double(dailyPeak30) * 100)
-    }
 
     /// Last 7 days relative to the busiest 7-day block seen (0-100).
     var weeklyRelativePercent: Double {
@@ -109,9 +97,6 @@ enum UsageAggregator {
 
         stats.perModel = perModel.values.sorted { $0.totals.total > $1.totals.total }
         stats.perModel30d = perModel30d.values.sorted { $0.totals.total > $1.totals.total }
-        let within30 = dailyTotals.filter { $0.key >= cal.startOfDay(for: cutoff30d) }
-        stats.dailyPeak30 = within30.values.max() ?? 0
-        stats.activeDays30 = within30.filter { $0.value > 0 }.count
         stats.weeklyPeak12 = peakSevenDayBlock(dailyTotals, calendar: cal)
         stats.scannedAt = now
         return stats
@@ -171,14 +156,6 @@ struct ProviderSnapshot {
     /// Server-reported weekly window, if the provider has one.
     var weeklyLimit: LimitInfo? { limits.first { $0.group == "weekly" } }
 
-    /// Headline "daily" number: today's tokens against the busiest recent day.
-    /// Nil until there is enough history for that comparison to mean anything,
-    /// so a first-day provider cannot drag a menu bar average to 100%.
-    var dailyPercent: Double? {
-        guard kind.tracksDailyUsage, let local, local.hasDailyBaseline else { return nil }
-        return local.dailyRelativePercent
-    }
-
     /// Headline "weekly" number: the plan's weekly window when known, else local.
     var weeklyPercent: Double? {
         if let weeklyLimit { return weeklyLimit.percent }
@@ -188,13 +165,9 @@ struct ProviderSnapshot {
     var weeklyIsFromPlan: Bool { weeklyLimit != nil }
 
     func percent(for metric: UsageMetric) -> Double? {
-        if (metric == .daily && !kind.tracksDailyUsage) || (metric == .weekly && !hasWeekly) {
-            return primaryLimit?.percent
-        }
         switch metric {
-        case .daily: return dailyPercent
-        case .weekly: return weeklyPercent
-        case .session: return primaryLimit?.percent
+        case .weekly where hasWeekly: return weeklyPercent
+        case .weekly, .session: return primaryLimit?.percent
         }
     }
 }
@@ -234,11 +207,6 @@ enum ProviderKind: String, CaseIterable, Identifiable, Codable {
 
     /// The terminal command that signs in to this tool.
     var command: String { rawValue }
-
-    /// Whether a "Daily" usage row makes sense. Codex plans have only 5h and
-    /// weekly windows and Copilot a monthly allowance, so a daily bar there
-    /// would suggest a limit that does not exist.
-    var tracksDailyUsage: Bool { self == .claude }
 
     /// Codex costs are notional for subscription users, so they are marked "est.".
     var costIsEstimate: Bool { self == .codex }

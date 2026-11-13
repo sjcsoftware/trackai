@@ -50,7 +50,6 @@ func gatherCLI() -> [[String: Any]] {
                 "last7d": totalsDict(s.last7d),
                 "last30d": totalsDict(s.last30d),
                 "allTime": totalsDict(s.allTime),
-                "dailyPercent": (s.dailyRelativePercent * 10).rounded() / 10,
                 "byModel": s.perModel.map { ["model": $0.model, "stats": totalsDict($0.totals)] },
             ]
         }

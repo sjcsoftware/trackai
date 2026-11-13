@@ -1,9 +1,9 @@
 import SwiftUI
 
 /// Overview: the three headline numbers for one provider, in the order the
-/// windows actually tighten — the rolling session first, then today, then the week.
-/// Providers without a daily window (Codex, Copilot) skip the middle row, and
-/// plans with no weekly window (Copilot's AI-credit plans) skip the last.
+/// windows actually tighten — the rolling session first, then the week. None of
+/// the providers has a daily limit, so there is no Daily row. Plans with no
+/// weekly window (Copilot's AI-credit plans) skip the second row.
 struct OverviewBoxView: View {
     let snapshot: ProviderSnapshot
 
@@ -11,9 +11,6 @@ struct OverviewBoxView: View {
         ProviderBox(snapshot: snapshot) {
             if let local = snapshot.local, snapshot.status != .notInstalled {
                 primaryRow
-                if snapshot.kind.tracksDailyUsage {
-                    dailyRow(local)
-                }
                 if snapshot.weeklyIsFromPlan || snapshot.hasWeekly {
                     weeklyRow(local)
                 }
@@ -55,26 +52,6 @@ struct OverviewBoxView: View {
         case .expired: return "login expired"
         case .missing: return snapshot.limitsError ?? "not logged in"
         case .notInstalled: return "not installed"
-        }
-    }
-
-    @ViewBuilder
-    private func dailyRow(_ local: LocalStats) -> some View {
-        if local.hasDailyBaseline {
-            BarRow(name: "Daily",
-                   percent: local.dailyRelativePercent,
-                   valueText: "\(Formatting.tokens(local.today.total)) · \(Formatting.usd(local.today.cost))",
-                   subtitle: "\(local.today.messages) messages · vs. busiest day in 30d",
-                   emphasised: true)
-        } else {
-            // Without a few days to compare against, a percentage here would
-            // only ever say "today is your busiest day" and read as 100%.
-            VStack(alignment: .leading, spacing: 2) {
-                StatLine(name: "Daily", totals: local.today)
-                Text("building a 30-day baseline · \(local.activeDays30) active day\(local.activeDays30 == 1 ? "" : "s")")
-                    .font(.system(size: 9.5))
-                    .foregroundStyle(.tertiary)
-            }
         }
     }
 
@@ -169,14 +146,7 @@ struct DetailBoxView: View {
     private var localSection: some View {
         sectionTitle("Token usage (local)")
         if let local = snapshot.local {
-            if snapshot.kind.tracksDailyUsage, local.hasDailyBaseline {
-                BarRow(name: "Today",
-                       percent: local.dailyRelativePercent,
-                       valueText: "\(Formatting.tokens(local.today.total)) · \(costPrefix)\(Formatting.usd(local.today.cost))",
-                       subtitle: "\(local.today.messages) messages · vs. busiest day in 30d")
-            } else {
-                StatLine(name: "Today", totals: local.today, costPrefix: costPrefix)
-            }
+            StatLine(name: "Today", totals: local.today, costPrefix: costPrefix)
             StatLine(name: "Last 5 hours", totals: local.last5h, costPrefix: costPrefix)
             StatLine(name: "Last 7 days", totals: local.last7d, costPrefix: costPrefix)
             StatLine(name: "Last 30 days", totals: local.last30d, costPrefix: costPrefix)
