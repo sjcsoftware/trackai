@@ -121,7 +121,7 @@ class LocalStats(object):
 
     __slots__ = (
         "today", "last5h", "last7d", "last30d", "all_time",
-        "per_model", "per_model_30d", "daily_peak_30", "scanned_at", "active_days_30", "weekly_peak_12",
+        "per_model", "per_model_30d", "scanned_at", "weekly_peak_12",
     )
 
     def __init__(self):
@@ -132,26 +132,12 @@ class LocalStats(object):
         self.all_time = TokenTotals()
         self.per_model = []        # sorted by total tokens desc, all time
         self.per_model_30d = []    # sorted by total tokens desc, last 30 days
-        self.active_days_30 = 0
         self.weekly_peak_12 = 0
-        self.daily_peak_30 = 0     # busiest day (total tokens) in the last 30 days
         self.scanned_at = datetime.now(timezone.utc)
-
-    @property
-    def has_daily_baseline(self):
-        return self.active_days_30 >= 3 and self.daily_peak_30 > 0
 
     @property
     def weekly_relative_percent(self):
         return min(100.0, self.last7d.total / self.weekly_peak_12 * 100) if self.weekly_peak_12 else 0.0
-
-    @property
-    def daily_relative_percent(self):
-        # type: () -> float
-        """Today's usage relative to the busiest day in the last 30 days (0-100)."""
-        if self.daily_peak_30 <= 0:
-            return 0.0
-        return min(100.0, self.today.total / float(self.daily_peak_30) * 100.0)
 
 
 class TranscriptScanner(object):
@@ -215,7 +201,6 @@ class TranscriptScanner(object):
 
         per_model = {}
         per_model_30d = {}
-        daily_totals = {}
         history = {}
 
         for e in entries:
@@ -240,15 +225,11 @@ class TranscriptScanner(object):
                 if m30 is None:
                     m30 = per_model_30d[e.model] = ModelStats(e.model)
                 m30.totals.add(e)
-                day = e.date.astimezone(local_tz).date()
-                daily_totals[day] = daily_totals.get(day, 0) + e.total
             if e.date >= cutoff_5h:
                 stats.last5h.add(e)
 
         stats.per_model = sorted(per_model.values(), key=lambda s: s.totals.total, reverse=True)
         stats.per_model_30d = sorted(per_model_30d.values(), key=lambda s: s.totals.total, reverse=True)
-        stats.daily_peak_30 = max(daily_totals.values()) if daily_totals else 0
-        stats.active_days_30 = len(daily_totals)
         stats.weekly_peak_12 = max((sum(history.get(day - timedelta(days=i), 0) for i in range(7)) for day in history), default=0)
         stats.scanned_at = now
         return stats

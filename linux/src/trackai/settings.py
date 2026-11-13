@@ -14,13 +14,12 @@ import sys
 
 APP_NAME = "trackai"
 
-# Menu-bar colouring metrics.
-METRIC_DAILY = "daily"
+# Menu-bar colouring metrics. There is no daily one: no provider has a daily
+# limit, and a stored "daily" from an older version reads the session limit.
 METRIC_SESSION = "session"
 METRIC_WEEKLY = "weekly"
 
 COLOR_METRICS = [
-    (METRIC_DAILY, "Daily usage (vs. 30-day peak)"),
     (METRIC_SESSION, "Session (5h) limit · Copilot: monthly"),
     (METRIC_WEEKLY, "Weekly limit"),
 ]
@@ -56,7 +55,7 @@ AUTOSTART_FILE = os.path.join(
 DEFAULTS = {
     "warnThreshold": 50.0,
     "critThreshold": 80.0,
-    "colorMetric": METRIC_DAILY,
+    "colorMetric": METRIC_SESSION,
     "transparency": 0.65,
     "opaqueBackground": False,
     "defaultAccountID": "",
@@ -176,6 +175,8 @@ class Settings(object):
             elif isinstance(default, str):
                 if isinstance(value, str):
                     self._values[key] = value
+        if self._values["colorMetric"] not in dict(COLOR_METRICS):
+            self._values["colorMetric"] = METRIC_SESSION
         # Providers added since this file was written start out enabled.
         order = self._values["providerOrder"]
         for kind in DEFAULTS["providerOrder"]:

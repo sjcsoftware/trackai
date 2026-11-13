@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  <img src="screenshots/linux-overview.png" alt="trackai overview: session, monthly, daily and weekly usage for Claude Code, Codex and Copilot" width="340">
+  <img src="screenshots/linux-overview.png" alt="trackai overview: session, monthly and weekly usage for Claude Code, Codex and Copilot" width="340">
   <img src="screenshots/linux-detailed.png" alt="trackai detailed page: plan limits, token usage and model breakdown" width="340">
 </p>
 
@@ -90,7 +90,7 @@ trackai update
 In **Settings** you can:
 
 - turn Claude Code, Codex or Copilot on and off, and change their order
-- choose what the icon follows: the session (Copilot: monthly), weekly, or daily usage of one provider (Codex and Copilot have no daily limit, and Copilot's AI-credit plans no weekly one, so those use the 5-hour or monthly limit), or the average or highest across them
+- choose what the icon follows: the session (Copilot: monthly) or weekly limit of one provider (Copilot's AI-credit plans have no weekly limit, so they use the monthly one), or the average or highest across them
 - set when the icon turns orange and red (50% and 80% by default)
 - adjust the panel's transparency, the refresh interval, and launch at login
 - add a second Claude account by pointing trackai at its config folder

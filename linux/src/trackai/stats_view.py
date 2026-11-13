@@ -226,18 +226,6 @@ def overview_card(data, settings):
         status = _status_text(data)
         card.put(PlaceholderRow(data.primary_name, "—", status or data.api_error or "no limit data yet"))
 
-    if not data.has_daily:
-        pass
-    elif local.has_daily_baseline:
-        card.put(BarRow("Daily", local.daily_relative_percent,
-                        "{} · {}".format(Formatting.tokens(local.today.total), Formatting.usd(local.today.cost)),
-                        "vs. busiest day in 30 days", settings))
-    else:
-        card.put(PlaceholderRow(
-            "Daily", "{} · {}".format(Formatting.tokens(local.today.total), Formatting.usd(local.today.cost)),
-            "building a 30-day baseline · {} active day{}".format(
-                local.active_days_30, "" if local.active_days_30 == 1 else "s")))
-
     week_figure = "{} · {}".format(Formatting.tokens(local.last7d.total), Formatting.usd(local.last7d.cost))
     if weekly is not None:
         card.put(BarRow("Weekly limit", weekly.percent, week_figure,
@@ -274,13 +262,7 @@ def detailed_card(data, settings):
 
     card.put(_separator())
     card.put(_label("TOKEN USAGE (LOCAL)", "tc-caption"))
-    if data.has_daily and local.has_daily_baseline:
-        card.put(BarRow("Today", local.daily_relative_percent,
-                        "{} · {}{}".format(Formatting.tokens(local.today.total), cost_prefix,
-                                           Formatting.usd(local.today.cost)),
-                        "vs. busiest day in 30 days", settings, emphasised=False))
-    else:
-        card.put(_stat_line("Today", local.today, cost_prefix))
+    card.put(_stat_line("Today", local.today, cost_prefix))
     for name, totals in (("Last 5 hours", local.last5h), ("Last 7 days", local.last7d),
                          ("Last 30 days", local.last30d), ("All time", local.all_time)):
         card.put(_stat_line(name, totals, cost_prefix))

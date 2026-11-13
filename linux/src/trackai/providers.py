@@ -24,10 +24,8 @@ class ProviderSnapshot:
         self.api = None
         self.api_error = None
         self.local = LocalStats()
-        # Providers without a daily allowance (Codex, Copilot) get no Daily
-        # row, and a "daily" icon metric falls back to their primary limit.
-        self.has_daily = True
-        # Likewise for weekly: no Weekly row, and "weekly" reads the primary limit.
+        # Plans without a weekly window get no Weekly row, and "weekly" reads
+        # the primary limit. No provider has a daily limit, so there is no Daily row.
         self.has_weekly = True
         # The limit group the overview and the "session" metric show.
         self.primary_limit, self.primary_name = "session", "Session (5h)"
@@ -42,15 +40,15 @@ class ProviderSnapshot:
         return self.name + (" · " + self.account.email if self.account.email else "")
 
     def metric_percent(self, metric):
-        if (metric == "daily" and not self.has_daily) or (metric == "weekly" and not self.has_weekly):
+        # Anything but "weekly" (including a "daily" saved by an older version)
+        # reads the primary limit.
+        if metric != "weekly" or not self.has_weekly:
             metric = "session"
-        if metric in ("session", "weekly"):
-            group = self.primary_limit if metric == "session" else metric
-            limit = self.api.limit(group) if self.api else None
-            if limit:
-                return limit.percent
-            return self.local.weekly_relative_percent if metric == "weekly" else None
-        return self.local.daily_relative_percent if self.local.has_daily_baseline else None
+        group = self.primary_limit if metric == "session" else metric
+        limit = self.api.limit(group) if self.api else None
+        if limit:
+            return limit.percent
+        return self.local.weekly_relative_percent if metric == "weekly" else None
 
 
 class LimitCache:
@@ -141,7 +139,6 @@ class CodexProvider:
         if not home.is_dir():
             return []
         snap = ProviderSnapshot(self.kind, self.name, home, command=self.command)
-        snap.has_daily = False
         snap.cost_is_estimate = True
         account = read_account(home)
         if account:
@@ -179,7 +176,6 @@ class CopilotProvider:
             return []
         snap = ProviderSnapshot(self.kind, self.name, home, command=self.command)
         snap.primary_limit, snap.primary_name = "monthly", "Monthly"
-        snap.has_daily = False
         login = copilot.read_login(home)
         if login:
             snap.account.email = login.login

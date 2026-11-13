@@ -133,12 +133,6 @@ class CodexTests(unittest.TestCase):
             auth.write_text(json.dumps(obj))
             self.assertIsNone(read_account(self.home))
 
-    def test_codex_snapshot_has_no_daily_window(self):
-        settings = Settings().snapshot()
-        settings._values["codexHome"] = str(self.home)
-        data = CodexProvider().scan(settings)[0]
-        self.assertFalse(data.has_daily)
-        self.assertTrue(ProviderSnapshot("claude", "Claude Code", "/c").has_daily)
 
     def test_codex_is_offline_and_labels_stale_limits(self):
         self.write("a.jsonl", [event("event_msg", {"rate_limits": {"secondary": {"used_percent": 20}}}, NOW - timedelta(hours=7))])
@@ -244,8 +238,7 @@ class CopilotTests(unittest.TestCase):
         self.assertIsNone(data.api_error)
         self.assertAlmostEqual(data.metric_percent("session"), 4.7)
         self.assertEqual(data.primary_limit, "monthly")
-        # Copilot has no daily allowance: no Daily row, and "daily" reads the monthly limit.
-        self.assertFalse(data.has_daily)
+        # A "daily" left by an older version reads the monthly limit.
         self.assertAlmostEqual(data.metric_percent("daily"), 4.7)
         # AI-credit billing has no weekly window either.
         self.assertFalse(data.has_weekly)
@@ -377,14 +370,12 @@ class ProviderStateTests(unittest.TestCase):
     def test_baselines_and_future_records(self):
         records = [UsageEntry(str(i), "claude-sonnet-5", NOW - timedelta(days=i), 10, 0, 0, 0) for i in range(3)]
         scanner = TranscriptScanner()
-        self.assertFalse(scanner._aggregate(records[:1]).has_daily_baseline)
         stats = scanner._aggregate(records)
-        self.assertTrue(stats.has_daily_baseline)
         self.assertEqual(stats.weekly_relative_percent, 100)
         future = UsageEntry("future", "claude-sonnet-5", NOW + timedelta(days=2), 100, 0, 0, 0)
         self.assertEqual(scanner._aggregate(records + [future]).all_time.total, 30)
 
-    def test_average_highest_single_and_unknown_daily(self):
+    def test_average_highest_single_and_legacy_daily(self):
         settings = Settings().snapshot()
         settings._values.update(colorMetric="session", iconMode="average", iconProviders=["claude", "codex"])
         state = AppState(settings)
@@ -402,14 +393,16 @@ class ProviderStateTests(unittest.TestCase):
         self.assertEqual(state.icon_kind(), "claude")
         settings._values["defaultAccountID"] = state.accounts[1].id
         self.assertEqual(state.icon_kind(), "codex")
+        # No provider has a daily limit: a "daily" left by an older version reads the 5h limit.
         settings._values["colorMetric"] = "daily"
-        self.assertIsNone(state.icon_percent())
-        self.assertEqual(state.icon_kind(), "codex")
-        # Codex has no daily window, so a daily metric reads its 5h limit.
-        state.accounts[1].has_daily = False
         self.assertEqual(state.icon_percent(), 80)
-        state.accounts[1].has_daily = True
+        self.assertEqual(state.icon_kind(), "codex")
         settings._values["iconMode"] = "highest"
+        self.assertEqual(state.icon_kind(), "codex")
+        # With nothing to read, "highest" shows the bolt.
+        for data in state.accounts:
+            data.api = None
+        self.assertIsNone(state.icon_percent())
         self.assertIsNone(state.icon_kind())
 
     def test_provider_order_disable_and_failure_isolation(self):

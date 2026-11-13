@@ -35,7 +35,6 @@ for kind, name, model, percent in (("claude", "Claude Code", "claude-sonnet-5", 
     data.account.email = "developer@example.invalid"
     data.subscription_type = "plus" if kind == "codex" else "pro"
     data.credential_status = "ok"
-    data.has_daily = kind != "codex"
     data.local = TranscriptScanner()._aggregate([
         UsageEntry(str(i), model, now - timedelta(days=i, minutes=10), 40000, 20000, 0, 150000)
         for i in range(4)])
@@ -50,7 +49,7 @@ data.account.email = "octocat"
 data.subscription_type = "business"
 data.credential_status = "ok"
 data.primary_limit, data.primary_name = "monthly", "Monthly"
-data.has_daily = data.has_weekly = False
+data.has_weekly = False
 data.local = TranscriptScanner()._aggregate([
     UsageEntry(str(i), "claude-sonnet-5", now - timedelta(days=i, minutes=10), 400, 20000, 5000, 150000, 0.2)
     for i in range(4)])
@@ -89,7 +88,7 @@ def render(window, name):
 render(panel, "linux-overview")
 assert panel.get_size()[1] < 700, "overview should fit without scrolling"
 texts = [label.get_text() for label in _labels(panel.root)]
-assert texts.count("Daily") == 1, "only Claude has a Daily row; Codex and Copilot have no daily limit"
+assert "Daily" not in texts, "no provider has a daily limit, so there is no Daily row"
 assert "AI credits (monthly)" in texts and "525 / 11,000" in texts, "Copilot's monthly limit leads its card"
 assert "Weekly" not in texts, "AI-credit Copilot plans have no weekly window, so no local Weekly row"
 panel.detailed = True

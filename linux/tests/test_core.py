@@ -226,8 +226,6 @@ class ScannerTests(unittest.TestCase):
         self.assertEqual(stats.last5h.total, 100)
         self.assertEqual(stats.all_time.total, 400)
         self.assertEqual([m.model for m in stats.per_model], ["claude-sonnet-5"])
-        self.assertGreater(stats.daily_peak_30, 0)
-        self.assertLessEqual(stats.daily_relative_percent, 100.0)
 
     def test_model_ordering_and_cache_invalidation(self):
         now = datetime.now(timezone.utc)
@@ -252,7 +250,7 @@ class ScannerTests(unittest.TestCase):
     def test_missing_directory(self):
         stats = TranscriptScanner().scan(os.path.join(self.dir, "nope"))
         self.assertEqual(stats.all_time.messages, 0)
-        self.assertEqual(stats.daily_relative_percent, 0.0)
+        self.assertEqual(stats.weekly_relative_percent, 0.0)
 
 
 class SettingsTests(unittest.TestCase):
@@ -282,7 +280,7 @@ class SettingsTests(unittest.TestCase):
         settings = settings_mod.Settings()
 
         self.assertEqual(settings.warn_threshold, 50.0)
-        self.assertEqual(settings.color_metric, settings_mod.METRIC_DAILY)
+        self.assertEqual(settings.color_metric, settings_mod.METRIC_SESSION)
 
         settings.warn_threshold = 40.0
         settings.crit_threshold = 80.0
@@ -309,6 +307,15 @@ class SettingsTests(unittest.TestCase):
         with open(settings_mod.SETTINGS_FILE, "w", encoding="utf-8") as fh:
             fh.write("{not json")
         self.assertEqual(settings_mod.Settings().warn_threshold, 50.0)
+
+    def test_stored_daily_metric_falls_back_to_session(self):
+        import importlib
+        settings_mod = importlib.import_module("trackai.settings")
+        settings_mod.ensure_dir(settings_mod.CONFIG_DIR)
+        with open(settings_mod.SETTINGS_FILE, "w", encoding="utf-8") as fh:
+            json.dump({"colorMetric": "daily"}, fh)
+        self.assertEqual(settings_mod.Settings().color_metric, settings_mod.METRIC_SESSION)
+        self.assertNotIn("daily", dict(settings_mod.COLOR_METRICS))
 
     def test_new_providers_are_added_to_stored_lists(self):
         import importlib
@@ -341,8 +348,6 @@ class StateTests(unittest.TestCase):
 
         data = ProviderSnapshot("claude", "Claude Code", "/tmp/x")
         local = LocalStats()
-        local.daily_peak_30 = 100
-        local.active_days_30 = 3
         local.today.input = 25
         data.local = local
         data.api = usage_api.ApiUsage(
@@ -353,7 +358,8 @@ class StateTests(unittest.TestCase):
             extra_credits_used=None,
             fetched_at=datetime.now(timezone.utc),
         )
-        self.assertEqual(data.metric_percent("daily"), 25.0)
+        # There is no daily limit; a "daily" left by an older version reads the session.
+        self.assertEqual(data.metric_percent("daily"), 42.0)
         self.assertEqual(data.metric_percent("session"), 42.0)
         self.assertEqual(data.metric_percent("weekly"), 66.0)
 

@@ -66,7 +66,7 @@ dist/trackai-linux.tar.gz     Linux payload; installer selects by uname
    `ProviderKind` case, a `ProviderMark` glyph, and a `ProviderRegistry` entry.
    Nothing in the views or settings should need a per-provider branch beyond
    copy. Keep it that way. On Linux, snapshots describe themselves instead
-   (`primary_limit`/`primary_name`, `has_daily`, `has_weekly`, `cost_is_estimate`,
+   (`primary_limit`/`primary_name`, `has_weekly`, `cost_is_estimate`,
    `command`, `LimitInfo.detail`), and `Settings.load()` appends kinds missing
    from a stored `providerOrder`.
 7. **The Mac app is ad-hoc signed, so a direct Keychain read re-prompts after
@@ -174,13 +174,15 @@ only if Google exposes a quota endpoint that a consumer token can actually call.
    rect of the top-level window under the click (the bar), because i3 and many
    bars set no `_NET_WORKAREA`/struts. Wayland keeps an undecorated top-level.
    Never style per desktop: colours come from the GTK theme accent.
-10. **Codex and Copilot have no daily limit.** Their snapshots set
-    `has_daily = False`: no Daily row in the panel (never synthesise one from
-    local history), and the "daily" icon metric reads the primary limit
-    (Codex 5h, Copilot monthly).
+10. **No provider has a daily limit.** Claude Code's plans have only the
+    5-hour session and weekly windows, Codex 5h and weekly, Copilot a monthly
+    allowance. There is no Daily row in the panel (never synthesise one from
+    local history) and no "daily" icon metric; a stored `colorMetric` of
+    `"daily"` falls back to the session (primary) limit. Today's token count
+    stays a plain local stat on the detailed page.
 12. **Copilot (Linux only for now) has only a monthly allowance.** Its
-    snapshots set `primary_limit = "monthly"` and `has_daily = False`, so the
-    overview leads with it and the "session" and "daily" icon metrics read it.
+    snapshots set `primary_limit = "monthly"`, so the overview leads with it
+    and the "session" icon metric reads it.
     Token-based (AI credit) plans (`token_based_billing`, kept as
     `ApiUsage.token_based`) also set `has_weekly = False`: no local Weekly row,
     and "weekly" reads the monthly limit. Premium-request plans, or an unknown
